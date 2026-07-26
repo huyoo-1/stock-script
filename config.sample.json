@@ -1,0 +1,27 @@
+{
+  "indices": [
+    { "name": "上证指数", "code": "000001", "exchange": "SH" },
+    { "name": "创业板指", "code": "399006", "exchange": "SZ" }
+  ],
+  "thresholds": {
+    "normal": 40,
+    "warning": 50
+  },
+  "feishu": {
+    "appId": "cli_xxx",
+    "appSecret": "xxx",
+    "chatId": "oc_xxx",
+    "domain": "feishu"
+  },
+  "mode": "both",
+  "intradayPoints": ["10:00", "11:00", "14:00"],
+  "closeTime": "19:00",
+  "etfWhitelist": ["510300", "510050", "510500", "510310", "159915"],
+  "etfSurgeRatio": 2.5,
+  "marginUnit": "亿元",
+  "historyDays": 30,
+  "maxRetries": 3,
+  "feishuMaxBytes": 20000,
+  "nid18Enabled": false,
+  "proxy": null
+}
