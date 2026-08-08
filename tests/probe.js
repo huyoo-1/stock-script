@@ -1,5 +1,5 @@
 // 契约核实脚本：打印原始 API 响应，核实三个未核实契约 + ETF/指数 secid。
-// 用法: node scripts/probe.js [all|breadth|constituents|margin|etf|index]
+// 用法: node tests/probe.js [all|breadth|constituents|margin|etf|index]
 const path = require('path');
 const { createHttpClient } = require('../lib/http');
 const em = require('../lib/emData');
@@ -25,28 +25,25 @@ async function probeBreadth() {
 }
 
 async function probeConstituents() {
-  header('指数成分股（风险 #1）');
+  header('指数成分股（派生 + 三级降级）');
+  // 先拉一次全 A，成分股优先从同一批数据派生（同源，减少新浪重复翻页）
+  let allShares = null;
+  try {
+    allShares = await em.fetchAllAShares(http);
+    console.log(`全A: ${allShares.length} 只`);
+  } catch (e) {
+    console.error('全A拉取失败:', e.message);
+  }
   for (const code of ['000001', '399006']) {
     console.log(`\n--- ${code} ---`);
-    // 试 primary fs
-    const cfg = em.INDEX_FS[code];
     try {
-      const data = await http.get(em.EM_CLIST_URL, {
-        params: { ...em.COMMON_PARAMS, pz: '3000', fields: em.FIELDS_CROWD, fs: cfg.primary },
-        source: `probe:${code}`,
-      });
-      const cnt = data && data.data && data.data.diff ? data.data.diff.length : 0;
-      console.log(`primary fs=${cfg.primary} → ${cnt} 行`);
-      if (cnt > 0) console.log('样本:', JSON.stringify(data.data.diff.slice(0, 2), null, 2));
+      const { rows, source } = await em.fetchIndexConstituents(http, code, allShares);
+      console.log(`结果: source=${source}, ${rows.length} 行`);
+      if (rows.length > 0) {
+        console.log('样本:', JSON.stringify(rows.slice(0, 3), null, 2));
+      }
     } catch (e) {
-      console.log(`primary fs=${cfg.primary} 失败: ${e.message}`);
-    }
-    // 试三级降级
-    try {
-      const { rows, source } = await em.fetchIndexConstituents(http, code);
-      console.log(`降级结果: source=${source}, ${rows.length} 行`);
-    } catch (e) {
-      console.log(`降级失败: ${e.message}`);
+      console.log(`失败: ${e.message}`);
     }
   }
 }
@@ -57,7 +54,7 @@ async function probeMargin() {
     const raw = await http.get(em.EM_DATACENTER_URL, {
       params: {
         reportName: 'RPTA_WEB_MARGIN_DAILYTRADE',
-        sortColumns: 'TRADE_DATE', sortTypes: '-1',
+        sortColumns: 'STATISTICS_DATE', sortTypes: '-1',
         pageSize: '1', pageNumber: '1', columns: 'ALL', source: 'WEB',
       },
       source: 'probe:margin',

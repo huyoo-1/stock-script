@@ -1,73 +1,76 @@
 # 变更记录
 
-## [Unreleased] - 2026-07-24
+## [还没发版] - 2026-08-08（数据抓取重构）
 
-### 新增：首版代码实现
+### 全量抓取合并，一次搞定
 
-按 [docs/design.md](docs/design.md) v1.8 实现完整可运行代码，共 16 个文件。
+之前抓取要分几批翻页：全 A 一批、上证成分股一批、创业板成分股一批，加起来约 150 页。现在改成只翻一次全 A（约 70 页），成分股直接从同一批数据里按代码前缀筛出来：
 
-**模块结构**
+- 请求量减半，不容易触发新浪限流
+- 拥挤度的分子分母用的是同一批数据，口径不会对不上
 
-- `service.js` — 入口：bootstrap + 进程信号处理（SIGINT/SIGTERM 优雅关闭）+ uncaughtException 兜底；支持 `--once` 调试模式
-- `lib/config.js` — 加载 + 校验 config.json，缺飞书凭证 fail-fast
-- `lib/log.js` — stdout + 文件双输出日志，10MB 按大小轮转
-- `lib/http.js` — 共享反爬客户端：随机 UA 池 + 同源限速（800-1500ms）+ 指数退避重试（1s/3s/8s + jitter）+ 可选 nid18 + SSL 证书放宽
-- `lib/calendar.js` — A 股交易日/时段/午休判断，读 `data/holidays.json` 静态节假日表
-- `lib/scheduler.js` — setTimeout 递归调度（非 setInterval，避免漂移），盘中点 + 收盘点各一个 timer
-- `lib/emData.js` — 东财数据封装（clist/get + stock/get + datacenter）+ 新浪降级
-- `lib/crowd.js` — 拥挤度算法（成交额前 5% 集中度），纯函数
-- `lib/breadth.js` — 市场广度（涨跌家数/涨跌停/总成交额 + 活跃度分级），移植自参考程序涨跌停判定
-- `lib/margin.js` — 融资融券余额（东财主源 + 上交所/深交所备选）
-- `lib/etfFlow.js` — 宽基 ETF 成交额异动（国家队代理）
-- `lib/history.js` — JSON 历史读写，原子写（.tmp + rename）防崩溃损坏
-- `lib/cardBuilder.js` — 飞书卡片 JSON 组装，column_set + column 画真表格（lark_md 不支持表格）
-- `lib/feishu.js` — 飞书官方 SDK + App Bot 推送，含 sendTest 自检
-- `lib/runner.js` — 编排 runIntraday / runClose，并行拉取各数据源
-- `scripts/probe.js` — 契约核实脚本，打印原始 API 响应
-- `data/holidays.json` — 2026 年 A 股节假日表（手工维护）
+### 反爬再加强
 
-**配置与依赖**
+- 之前遇到 456 会等几秒再重试 3 次，其实没用还会加重封禁，现在改成直接放弃这次抓取、降级到别的数据源
+- 分页抓取全部改成串行，避免并发翻页被风控
+- 指数行情和 ETF 行情改成直接走新浪（东财 push2 行情接口在当前网络从来没成功过），不再浪费重试时间
 
-- `package.json` — 依赖 `axios` + `@larksuiteoapi/node-sdk`，可选 `https-proxy-agent`，engines node>=22
-- `config.sample.json` — 配置模板
-- `.gitignore` — 忽略 config.json / node_modules / logs / history.json
+### 抓取进度提示
 
-### 实测验证（算法 + 数据源）
+抓取过程中会一行行打印进度，比如 `[抓取] 全A股：第 5 页，已获取 400 只`，方便确认程序在干活。
 
-- **算法单测**：拥挤度（20 只股前 5%=1 只，集中度 9.52%）、广度（688 股 +10% 不涨停 / 主板 +10% 涨停 / 停牌过滤）——逻辑全对
-- **全 A 股**：5530 只，两市成交 19442 亿 ✅
-- **拥挤度**：上证 48.63%（关注区，2308 成分股）、创业板 50.91%（预警区，1399 成分股）✅
-- **指数行情**：上证 3814、创业板 3480 ✅
-- **ETF 成交额**：5 只白名单全拿到 ✅
-- **融资融券**：字段名 `FIN_BALANCE`/`LOAN_BALANCE`/`MARGIN_BALANCE` 确认，单位亿元 ✅
+### 数据抓不到时发告警
 
-### 已知问题：公司网络屏蔽东财 push2 域名
+以前抓取失败会推一条全是 0 的消息，现在改成推"数据异常"告警卡，不会误导。
 
-> 当前部署环境为公司网络，存在域名屏蔽，影响部分数据源。换网络后需重新验证。
+### 融资融券备选源修正
 
-**屏蔽情况**（2026-07-24 实测）：
+深交所那个备用接口的字段还没核实，之前解析不到会当成 0 算进去，把合计算小了。现在解析不到就标记缺失（`partial`），宁可少报不错报。
 
-| 域名 | 状态 | 影响 | 已处理 |
-|---|---|---|---|
-| `push2.eastmoney.com`（clist/get、stock/get） | ❌ 被封（返回 HTML "URL过滤"，IP 层面屏蔽，非 UA/Referer 能绕过） | 全 A spot、指数成分股 primary、ETF/指数行情 primary | 已加新浪降级，实测可用 |
-| `hq.sinajs.cn`（新浪行情） | ✅ 可用 | 降级源 | 已接入 |
-| `vip.stock.finance.sina.com.cn`（新浪全 A 批量） | ✅ 可用 | 全 A spot 降级 | 已接入 |
-| `qt.gtimg.cn`（腾讯行情） | ✅ 可用 | 备选降级源（未接入，备用） | — |
-| `datacenter-web.eastmoney.com`（融资融券） | ✅ 可用 | 融资融券主源 | 已接入 |
+### 测试脚本整理
 
-**已做的降级处理**（`lib/emData.js`）：
+`scripts/` 目录删掉了，测试脚本挪到 `tests/` 下：
 
-- `fetchAllAShares` — 东财 clist/get 被封 → 降级新浪批量接口（分页拉 5530 只）
-- `fetchIndexQuote` / `fetchEtfQuote` — 东财 stock/get 被封 → 降级新浪 hq.sinajs.cn
-- `fetchIndexConstituents` — primary `b:<code>` 走东财被封 → fallback ② 全 A 按代码前缀过滤（上证 60/688、创业板 30），实测拿到 2308/1399 只
+- 删了三个临时的 debug_crowd 脚本（口径定稿后没用了）
+- 新增 `test_fetch_snapshot.js`（抓取验证）和 `run_close_once.js`（完整流程验证）
+- `test_compact.js` / `test_backup_cleanup.js` 跑完会自动清理测试数据
 
-**换网络后需重新验证**：
+### 全链路验证通过
 
-1. 东财 push2 是否恢复可用（若可用，成分股 primary `b:` fs 需重新测哪个值生效，当前因封锁未验证）
-2. 融资融券 `RPTA_WEB_MARGIN_DAILYTRADE` 时效问题（当前返回 2019 年旧数据，该 reportName 可能已停更；换网后若仍旧，需换 reportName 如 `RPT_BOURSE_RZRQ` 或用上交所/深交所官方源）
-3. 跑 `node scripts/probe.js all` 重新核实全部契约
+2026-08-08 收盘后实际跑通了一次完整流程：抓取全 A 5538 只 → 推送到飞书 → 写入本地历史，全程没触发 456。
 
-### 待用户实测（需飞书凭证）
+## [还没发版] - 2026-08-08
 
-- `npm run test:feishu` — 验证飞书 App Bot 凭证 + 入群 + `im:message` 权限（早发现 code 230002）
-- `node service.js --once` — 跑一次完整盘中快照，确认飞书收到卡片
+### 换了默认数据源
+
+之前默认用东方财富接口拉全 A 股数据，但在当前网络下经常连不上（socket hang up），所以改成优先用新浪接口。如果新浪数据看起来不对（股票数量太少或成交额太小），会自动再试试东方财富。
+
+### 本地历史记录升级
+
+- 以前所有历史都存在一个 `data/history.json` 文件里，现在改成按年份分开存，比如 `data/history/2026.json`
+- 写入前会检查数据格式，格式不对的记录不会存进去
+- 每次写入前先备份旧文件到 `data/history_backup/`，然后再写新数据，避免写坏
+- 加了简单的写入锁，防止同时写同一个文件
+- 每周五收盘后会自动整理一次历史数据：去重、删除过期数据、清理空文件、删除 30 天前的备份
+- 配置里新增了 `historyStorage` 相关选项
+
+### 反爬加强
+
+新浪接口容易返回 456（被识别成爬虫），所以加了：
+- 更真实的浏览器请求头
+- 新浪请求自动带 referer 和 cookie
+- 分页之间增加随机间隔
+- 遇到 456 会等多几秒再重试
+
+### 还没解决的问题
+
+新浪全量抓取还是会触发 456，等 IP 解封后要继续验证。下一步可能会加腾讯接口作为备用。
+
+## [还没发版] - 2026-07-24
+
+### 第一版
+
+- 搭建了基础服务框架
+- 实现了盘中快照和收盘汇总
+- 接入了飞书消息推送
+- 实现了拥挤度、市场广度、融资融券、ETF 异动几个指标

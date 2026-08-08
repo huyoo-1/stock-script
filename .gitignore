@@ -6,6 +6,8 @@ node_modules/
 
 # 运行时数据与日志
 data/history.json
+data/history/
+data/history_backup
 logs/
 *.log
 *.log.1
@@ -13,3 +15,4 @@ logs/
 # 系统
 .DS_Store
 Thumbs.db
+config.json

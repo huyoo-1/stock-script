@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node service.js",
     "once": "node service.js --once",
-    "probe": "node scripts/probe.js",
+    "probe": "node tests/probe.js",
     "test:feishu": "node -e \"require('./lib/feishu.js').sendTest()\""
   },
   "dependencies": {

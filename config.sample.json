@@ -23,5 +23,12 @@
   "maxRetries": 3,
   "feishuMaxBytes": 20000,
   "nid18Enabled": false,
-  "proxy": null
+  "proxy": null,
+  "historyStorage": {
+    "enabled": true,
+    "dir": "data/history",
+    "backupDir": "data/history_backup",
+    "autoCompact": true,
+    "backupRetentionDays": 30
+  }
 }
