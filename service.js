@@ -6,6 +6,10 @@ const { createHttpClient } = require('./lib/http');
 const { createFeishuClient } = require('./lib/feishu');
 const { createScheduler } = require('./lib/scheduler');
 const { runIntraday, runClose } = require('./lib/runner');
+const { createWebServer } = require('./lib/web');
+const history = require('./lib/history');
+const priceHistory = require('./lib/priceHistory');
+const screener = require('./lib/screener');
 
 async function main() {
   const once = process.argv.includes('--once');
@@ -44,6 +48,14 @@ async function main() {
     onClose: () => runClose({ config, http, feishu, logger, intradayCache }),
   });
   scheduler.start();
+
+  // Web 面板（仅本机访问）
+  if (config.web && config.web.enabled) {
+    const web = createWebServer({ config, logger, history, priceHistory, screener });
+    web.listen(config.web.port || 8787, '127.0.0.1', () => {
+      logger.info(`Web 面板已启动：http://127.0.0.1:${config.web.port || 8787}`);
+    });
+  }
 
   // 优雅关闭
   let shuttingDown = false;

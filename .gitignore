@@ -8,6 +8,7 @@ node_modules/
 data/history.json
 data/history/
 data/history_backup
+data/price_history/
 logs/
 *.log
 *.log.1
