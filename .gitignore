@@ -17,3 +17,5 @@ logs/
 .DS_Store
 Thumbs.db
 config.json
+.idea/
+.vscode/
