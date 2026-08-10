@@ -49,11 +49,12 @@ async function main() {
   });
   scheduler.start();
 
-  // Web 面板（仅本机访问）
+  // Web 面板（监听地址由 config.web.host 决定，默认 127.0.0.1）
   if (config.web && config.web.enabled) {
     const web = createWebServer({ config, logger, history, priceHistory, screener });
-    web.listen(config.web.port || 8787, '127.0.0.1', () => {
-      logger.info(`Web 面板已启动：http://127.0.0.1:${config.web.port || 8787}`);
+    const host = config.web.host || '127.0.0.1';
+    web.listen(config.web.port || 8787, host, () => {
+      logger.info(`Web 面板已启动：http://${host}:${config.web.port || 8787}`);
     });
   }
 
