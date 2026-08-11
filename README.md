@@ -57,11 +57,9 @@ nssm start AStockCrowdMonitor
 
 | 脚本 | 用途 |
 |---|---|
-| `test_fetch_snapshot.js` | 验证全 A 抓取 + 进度打印 + 数据质量（`--maxPages 5` 小流量 / `--em` 单独测东财） |
-| `test_sina_sh_a.js` | 新浪反爬小批量验证（前 3 页） |
-| `test_sina_breadth.js` | 新浪广度统计验证 |
-| `test_compact.js` / `test_backup_cleanup.js` | 历史存储功能测试（跑完自动清理测试数据） |
-| `probe.js` | 接口契约核实探针 |
+| `breadth.test.js` / `crowd.test.js` / `screener.test.js` | 算法单测（`node --test tests/*.test.js`） |
+| `test-feishu.js` | 飞书凭证自检（`npm run test:feishu`） |
+| `probe.js` | 接口契约核实探针（`npm run probe`） |
 | `run_close_once.js` | 手动跑一次完整收盘流程 |
 
 ## 已知限制

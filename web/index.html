@@ -3,113 +3,257 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#f3f5f9">
 <title>A股大盘监控</title>
 <style>
   :root {
-    --bg: #f5f6f8; --card: #ffffff; --primary: #3b7ee8; --text: #1f2329; --sub: #8a919f;
-    --radius: 12px;
+    --bg: #f3f5f9;
+    --card: #ffffff;
+    --card-soft: #f8fafd;
+    --primary: #2563eb;
+    --primary-soft: #eaf1fe;
+    --primary-dark: #1d4ed8;
+    --text: #0f172a;
+    --text-2: #475569;
+    --sub: #64748b;
+    --line: #e2e8f0;
+    --line-soft: #f1f5f9;
+    --up: #dc2626;
+    --up-soft: #fee2e2;
+    --down: #16a34a;
+    --down-soft: #dcfce7;
+    --warn: #d97706;
+    --warn-soft: #fef3c7;
+    --radius: 16px;
+    --radius-sm: 12px;
+    --shadow: 0 1px 2px rgba(15,23,42,.04), 0 4px 20px rgba(15,23,42,.06);
+    --shadow-hover: 0 2px 8px rgba(15,23,42,.07), 0 10px 32px rgba(15,23,42,.10);
+    /* 触控目标最小高度（Apple HIG 44pt） */
+    --touch: 44px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  html { font-size: 16px; -webkit-text-size-adjust: 100%; }
-  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  html { font-size: 16px; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    background:
+      radial-gradient(1200px 600px at 20% -10%, rgba(37,99,235,.08) 0%, transparent 60%),
+      radial-gradient(1000px 500px at 110% 10%, rgba(37,99,235,.06) 0%, transparent 55%),
+      linear-gradient(180deg, #eef2f8 0%, var(--bg) 240px);
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
   [v-cloak] { display: none; }
 
+  /* 顶部吸顶区：标题 + tabs 作为一个整体，避免写死 top 偏移在高分屏/横屏下错位 */
+  .sticky-top { position: sticky; top: 0; z-index: 10; }
+
   .header {
-    position: sticky; top: 0; z-index: 10;
-    background: rgba(255,255,255,.94); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-    padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 10px;
-    border-bottom: 1px solid #eee;
+    background: rgba(255,255,255,.78);
+    backdrop-filter: blur(18px) saturate(1.5); -webkit-backdrop-filter: blur(18px) saturate(1.5);
+    padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 12px;
+    border-bottom: 1px solid rgba(226,232,240,.8);
   }
-  .header-title { font-size: clamp(17px, 5vw, 20px); font-weight: 700; }
-  .header-sub { font-size: 12px; color: var(--sub); margin-top: 2px; }
+  .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .header-title { font-size: clamp(19px, 5.2vw, 24px); font-weight: 800; letter-spacing: -.3px; }
+  .header-status {
+    display: flex; align-items: center; gap: 7px; flex-shrink: 0;
+    font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums;
+    background: rgba(241,245,249,.85); padding: 5px 10px; border-radius: 999px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--down); box-shadow: 0 0 0 3px var(--down-soft); }
+  .dot.loading { background: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); animation: pulse 1.2s ease-in-out infinite; }
+  .dot.error { background: var(--up); box-shadow: 0 0 0 3px var(--up-soft); }
+  @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.85); } }
+  .header-sub { font-size: 12px; color: var(--sub); margin-top: 4px; font-weight: 500; }
 
-  .tabs { display: flex; background: #fff; border-bottom: 1px solid #eee; padding: 0 8px; }
+  /* tabs */
+  .tabs {
+    display: flex; justify-content: center; gap: 8px;
+    background: rgba(255,255,255,.72);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(226,232,240,.7);
+    padding: 8px 12px;
+  }
   .tabs button {
-    flex: 1; padding: 12px 0; border: none; background: none;
-    font-size: 15px; color: var(--sub); border-bottom: 2px solid transparent; cursor: pointer;
+    flex: none; min-width: 76px; min-height: 40px;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 8px 16px; border: none; background: transparent;
+    font-size: 14px; color: var(--sub); border-radius: 999px;
+    cursor: pointer; transition: all .2s ease; font-weight: 500;
+    touch-action: manipulation;
   }
-  .tabs button.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+  .tabs button:hover { background: rgba(241,245,249,.9); color: var(--text-2); }
+  .tabs button.active { color: #fff; background: var(--primary); box-shadow: 0 3px 10px rgba(37,99,235,.32); font-weight: 600; }
 
-  .page { max-width: 720px; margin: 0 auto; padding: 12px 12px calc(env(safe-area-inset-bottom, 0px) + 28px); }
+  .page { max-width: 780px; margin: 0 auto; padding: 16px 14px calc(env(safe-area-inset-bottom, 0px) + 36px); }
 
-  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .card { background: var(--card); border-radius: var(--radius); padding: 12px 10px; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
-  .card-label { font-size: 12px; color: var(--sub); }
-  .card-value { font-size: clamp(18px, 5.5vw, 24px); font-weight: 700; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
-  .card-sub { font-size: 11px; color: var(--sub); }
+  /* 指标卡：手机 2 列 → 小平板 3 列 → 桌面 4 列 */
+  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .card {
+    background: var(--card); border-radius: var(--radius); padding: 15px 14px; box-shadow: var(--shadow);
+    transition: box-shadow .25s, transform .25s; position: relative; overflow: hidden;
+    border: 1px solid rgba(226,232,240,.6);
+  }
+  .card:hover { box-shadow: var(--shadow-hover); transform: translateY(-2px); }
+  .card::before { content: ''; position: absolute; left: 0; top: 0; right: 0; height: 3px; background: var(--accent, transparent); }
+  .card-label { font-size: 12px; color: var(--sub); display: flex; align-items: center; gap: 5px; font-weight: 500; }
+  .card-value { font-size: clamp(21px, 5.8vw, 28px); font-weight: 800; margin: 8px 0 4px; font-variant-numeric: tabular-nums; letter-spacing: -.8px; }
+  .card-delta { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 999px; }
+  .card-delta.up { color: var(--up); background: var(--up-soft); }
+  .card-delta.down { color: var(--down); background: var(--down-soft); }
+  .card-sub { font-size: 11px; color: var(--sub); margin-top: 4px; font-weight: 500; }
 
-  .panel { background: var(--card); border-radius: var(--radius); margin-top: 12px; padding: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
-  .panel-head { display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
-  .seg { display: flex; background: #f0f1f3; border-radius: 8px; padding: 2px; }
-  .seg button { border: none; background: none; padding: 4px 10px; font-size: 12px; border-radius: 6px; color: var(--sub); cursor: pointer; }
-  .seg button.active { background: #fff; color: var(--primary); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  /* 面板 */
+  .panel { background: var(--card); border-radius: var(--radius); margin-top: 14px; padding: 16px; box-shadow: var(--shadow); border: 1px solid rgba(226,232,240,.55); }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 700; margin-bottom: 12px; gap: 10px; flex-wrap: wrap; }
+  .panel-head .title-sub { font-size: 12px; color: var(--sub); font-weight: 500; margin-left: 6px; }
+  .seg { display: flex; background: var(--line-soft); border-radius: 999px; padding: 3px; }
+  .seg button {
+    border: none; background: none; padding: 5px 13px; min-height: 28px;
+    font-size: 12px; border-radius: 999px; color: var(--sub); cursor: pointer;
+    transition: all .2s; font-weight: 500; touch-action: manipulation;
+  }
+  .seg button:hover { color: var(--text-2); }
+  .seg button.active { background: #fff; color: var(--primary); font-weight: 700; box-shadow: 0 1px 4px rgba(15,23,42,.1); }
 
   .chart { width: 100%; height: 260px; }
 
-  .screen-status { font-size: 13px; color: var(--primary); margin-bottom: 8px; }
-  .list .row { display: flex; justify-content: space-between; align-items: center; padding: 10px 4px; border-bottom: 1px solid #f2f3f5; }
+  .screen-status { font-size: 13px; color: var(--primary); margin-bottom: 12px; display: inline-flex; align-items: center; gap: 6px; background: var(--primary-soft); padding: 6px 12px; border-radius: 999px; font-weight: 600; }
+  .list .row { display: flex; justify-content: space-between; align-items: center; padding: 13px 6px; border-bottom: 1px solid var(--line-soft); transition: background .15s, transform .15s; border-radius: 10px; }
+  .list .row:hover { background: var(--card-soft); transform: translateX(2px); }
   .list .row:last-child { border-bottom: none; }
   .row-main { min-width: 0; }
-  .row-code { font-size: 15px; font-weight: 600; }
-  .row-name { font-size: 12px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
-  .row-nums { display: flex; gap: 10px; font-size: 12px; color: var(--sub); font-variant-numeric: tabular-nums; }
+  .row-code { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+  .row-name { font-size: 12px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; margin-top: 2px; font-weight: 500; }
+  .row-nums { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; font-weight: 500; }
+  .row-nums span { white-space: nowrap; }
+  .row-nums .lbl { color: var(--sub); font-weight: 600; }
 
-  .empty { text-align: center; color: var(--sub); font-size: 13px; padding: 32px 0; }
+  .empty { text-align: center; color: var(--sub); font-size: 13px; padding: 40px 0; font-weight: 500; }
 
-  .search { display: flex; gap: 8px; }
-  .search input { flex: 1; min-width: 0; height: 42px; border: 1px solid #e0e2e6; border-radius: 8px; padding: 0 12px; font-size: 16px; outline: none; }
-  .search input:focus { border-color: var(--primary); }
-  .search button { height: 42px; padding: 0 20px; border: none; border-radius: 8px; background: var(--primary); color: #fff; font-size: 14px; cursor: pointer; }
-  .stock-title { font-size: 15px; font-weight: 600; margin: 10px 0 4px; }
-
-  @media (min-width: 768px) {
-    .cards { grid-template-columns: repeat(4, 1fr); }
-    .page { padding: 16px; }
-    .chart { height: 340px; }
+  /* 个股查询 */
+  .search { display: flex; gap: 10px; }
+  .search input {
+    flex: 1; min-width: 0; height: 48px; border: 1.5px solid var(--line); border-radius: var(--radius-sm);
+    padding: 0 16px; font-size: 16px; outline: none; background: var(--card-soft);
+    transition: border-color .2s, background .2s, box-shadow .2s;
+    -webkit-appearance: none; appearance: none;
   }
+  .search input:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 4px var(--primary-soft); }
+  .search input::placeholder { color: #94a3b8; }
+  .search button {
+    height: 48px; padding: 0 24px; border: none; border-radius: var(--radius-sm);
+    background: var(--primary); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: background .2s, transform .15s, box-shadow .2s;
+    box-shadow: 0 4px 12px rgba(37,99,235,.25);
+    touch-action: manipulation; user-select: none;
+  }
+  .search button:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(37,99,235,.30); }
+  .search button:active { transform: translateY(0); }
+  .stock-title { font-size: 16px; font-weight: 700; margin: 14px 0 8px; display: flex; align-items: center; gap: 7px; }
+
+  /* 骨架屏 */
+  .skeleton { background: linear-gradient(100deg, var(--line-soft) 30%, var(--line) 48%, var(--line-soft) 66%); background-size: 300% 100%; animation: shimmer 1.6s ease infinite; border-radius: 8px; }
+  @keyframes shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+  .sk-card { height: 96px; border-radius: var(--radius); }
+  .sk-chart { height: 260px; border-radius: var(--radius); margin-top: 14px; }
+
+  /* ---- 高分辨率屏幕（Retina / 2x+ DPR）：发丝级边框 ---- */
+  @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 2dppx) {
+    .header, .tabs { border-bottom-width: .5px; }
+    .card, .panel { border-width: .5px; }
+    .list .row { border-bottom-width: .5px; }
+    .search input { border-width: 1px; }
+  }
+
+  /* ---- 触屏设备：禁用悬停位移/变色，避免点按后悬停状态残留 ---- */
+  @media (hover: none) and (pointer: coarse) {
+    .card:hover { transform: none; box-shadow: var(--shadow); }
+    .list .row:hover { background: transparent; transform: none; }
+    .tabs button:hover { background: transparent; color: var(--sub); }
+    .search button:hover { transform: none; box-shadow: 0 4px 12px rgba(37,99,235,.25); }
+  }
+
+  /* ---- 小平板 / 大手机（480px+）---- */
+  @media (min-width: 480px) {
+    .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
+  /* ---- 平板 / 桌面（768px+）---- */
+  @media (min-width: 768px) {
+    .cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .page { padding: 20px; }
+    .chart { height: 340px; }
+    .sk-chart { height: 340px; }
+  }
+
+  /* ---- 桌面宽屏（1024px+）---- */
+  @media (min-width: 1024px) {
+    .page { max-width: 960px; }
+    .chart { height: 380px; }
+    .sk-chart { height: 380px; }
+  }
+
+  /* ---- 小屏手机（≤380px）---- */
   @media (max-width: 380px) {
-    .row-nums { gap: 6px; font-size: 11px; }
-    .card { padding: 10px 8px; }
+    .row-nums { gap: 8px; font-size: 11px; }
+    .card { padding: 13px 11px; }
+    .tabs { gap: 4px; padding: 8px 8px; }
+    .tabs button { min-width: 64px; min-height: 36px; padding: 7px 12px; font-size: 13px; }
   }
 </style>
 </head>
 <body>
 <div id="app" v-cloak>
-  <header class="header">
-    <div class="header-title">A股大盘监控</div>
-    <div class="header-sub">{{ statusText }}</div>
-  </header>
+  <div class="sticky-top">
+    <header class="header">
+      <div class="header-row">
+        <div class="header-title">A股大盘监控</div>
+        <div class="header-status">
+          <span class="dot" :class="{ loading: loading, error: statusType === 'error' }"></span>
+          <span>{{ statusText }}</span>
+        </div>
+      </div>
+      <div class="header-sub" v-if="lastDate">数据截至 {{ lastDate }}</div>
+    </header>
 
-  <nav class="tabs">
-    <button v-for="t in tabs" :key="t.id" :class="{ active: tab === t.id }" @click="switchTab(t.id)">{{ t.name }}</button>
-  </nav>
+    <nav class="tabs">
+      <button v-for="t in tabs" :key="t.id" :class="{ active: tab === t.id }" @click="switchTab(t.id)">{{ t.name }}</button>
+    </nav>
+  </div>
 
   <main class="page">
     <!-- 概览 -->
     <section v-show="tab === 'overview'">
-      <div class="cards">
-        <div class="card" v-for="c in metricCards" :key="c.label">
+      <div class="cards" v-if="!firstLoading">
+        <div class="card" v-for="c in metricCards" :key="c.label" :style="{ '--accent': c.accent }">
           <div class="card-label">{{ c.label }}</div>
           <div class="card-value" :style="{ color: c.color }">{{ c.value }}</div>
+          <div class="card-delta" v-if="c.delta != null" :class="c.deltaDir">{{ c.deltaArrow }}{{ c.delta }}</div>
           <div class="card-sub">{{ c.sub }}</div>
         </div>
       </div>
+      <div class="cards" v-else>
+        <div class="skeleton sk-card" v-for="n in 4" :key="n"></div>
+      </div>
       <div class="panel">
         <div class="panel-head">
-          <span>指数拥挤度</span>
+          <span>指数拥挤度<span class="title-sub">前 5% 成分股成交额占比</span></span>
           <div class="seg">
             <button v-for="d in [30, 60, 120]" :key="d" :class="{ active: histDays === d }" @click="loadHist(d)">{{ d }}日</button>
           </div>
         </div>
-        <div id="chart-hist" class="chart"></div>
+        <div id="chart-hist" class="chart" v-show="!firstLoading"></div>
+        <div class="skeleton sk-chart" v-if="firstLoading"></div>
       </div>
     </section>
 
     <!-- 筛选 -->
     <section v-show="tab === 'screener'">
       <div class="panel">
-        <div class="panel-head"><span>技术筛选 · 连续3日上涨 且 价≥MA5&gt;MA10</span></div>
+        <div class="panel-head"><span>技术筛选<span class="title-sub">连续3日上涨 且 价≥MA5&gt;MA10</span></span></div>
         <div class="screen-status">{{ screenStatus }}</div>
         <div class="list">
           <div class="row" v-for="it in screen.items" :key="it.code">
@@ -118,9 +262,9 @@
               <div class="row-name">{{ it.name }}</div>
             </div>
             <div class="row-nums">
-              <div>收 {{ it.close }}</div>
-              <div>MA5 {{ it.ma5 }}</div>
-              <div>MA10 {{ it.ma10 }}</div>
+              <span><span class="lbl">收</span> {{ it.close }}</span>
+              <span><span class="lbl">MA5</span> {{ it.ma5 }}</span>
+              <span><span class="lbl">MA10</span> {{ it.ma10 }}</span>
             </div>
           </div>
           <div class="empty" v-if="screen.items.length === 0">暂无符合条件的股票（积累满 10 个交易日后有效）</div>
@@ -137,7 +281,8 @@
         </div>
         <div class="stock-title" v-if="stockName">📈 {{ stockName }}（{{ stockCode }}）· 近 60 交易日</div>
         <div id="chart-stock" class="chart" v-show="stockSeries.length > 0"></div>
-        <div class="empty" v-if="searched && stockSeries.length === 0">暂无该股数据（数据积累中或代码有误）</div>
+        <div class="skeleton sk-chart" v-if="stockLoading"></div>
+        <div class="empty" v-if="searched && !stockLoading && stockSeries.length === 0">暂无该股数据（数据积累中或代码有误）</div>
       </div>
     </section>
   </main>
@@ -146,7 +291,7 @@
 <script src="/vendor/vue.global.prod.js"></script>
 <script src="/vendor/echarts.min.js"></script>
 <script>
-const { createApp, ref, reactive, computed, onMounted, onUnmounted } = Vue;
+const { createApp, ref, reactive, computed, onMounted, onUnmounted, nextTick } = Vue;
 
 createApp({
   setup() {
@@ -156,7 +301,11 @@ createApp({
       { id: 'screener', name: '筛选' },
       { id: 'stock', name: '个股' },
     ];
-    const statusText = ref('加载中...');
+    const statusText = ref('加载中');
+    const statusType = ref('');
+    const loading = ref(true);
+    const firstLoading = ref(true);
+    const stockLoading = ref(false);
     const histDays = ref(60);
     const hist = reactive({ dates: [], sh: [], cy: [] });
     const screen = reactive({ count: 0, readyDays: 0, neededDays: 10, updatedAt: null, items: [] });
@@ -175,12 +324,22 @@ createApp({
 
     async function loadHist(days) {
       histDays.value = days;
+      loading.value = true;
+      statusType.value = '';
       try {
         const r = await fetch('/api/indices/history?days=' + days).then((x) => x.json());
         Object.assign(hist, r);
+        statusText.value = '已刷新';
+        loading.value = false;
+        firstLoading.value = false;
+        // 等 v-show 把图表容器显示出来后再初始化，否则 ECharts 量到的宽度为 0
+        await nextTick();
         renderHist();
       } catch (e) {
-        statusText.value = '数据加载失败：' + e.message;
+        statusText.value = '加载失败';
+        statusType.value = 'error';
+        loading.value = false;
+        firstLoading.value = false;
       }
     }
 
@@ -188,13 +347,13 @@ createApp({
       if (!histChart) histChart = echarts.init(document.getElementById('chart-hist'), null, { renderer: 'canvas' });
       histChart.setOption({
         tooltip: { trigger: 'axis', valueFormatter: (v) => (v == null ? '-' : v + '%') },
-        legend: { data: ['上证', '创业板'], top: 0, itemWidth: 14, itemHeight: 8, textStyle: { fontSize: 11 } },
-        grid: { left: 42, right: 12, top: 28, bottom: 22 },
-        xAxis: { type: 'category', data: hist.dates, boundaryGap: false, axisLine: { lineStyle: { color: '#d0d3d8' } }, axisLabel: { fontSize: 10 } },
-        yAxis: { type: 'value', scale: true, splitLine: { lineStyle: { color: '#f0f1f3' } }, axisLabel: { fontSize: 10, formatter: '{value}%' } },
+        legend: { data: ['上证', '创业板'], top: 0, itemWidth: 14, itemHeight: 8, textStyle: { fontSize: 11, color: '#5a6577' } },
+        grid: { left: 42, right: 14, top: 30, bottom: 24 },
+        xAxis: { type: 'category', data: hist.dates, boundaryGap: false, axisLine: { lineStyle: { color: '#d0d3d8' } }, axisLabel: { fontSize: 10, color: '#8a93a6' } },
+        yAxis: { type: 'value', scale: true, splitLine: { lineStyle: { color: '#f2f4f8' } }, axisLabel: { fontSize: 10, color: '#8a93a6', formatter: '{value}%' } },
         series: [
-          { name: '上证', type: 'line', data: hist.sh, smooth: true, showSymbol: false, lineStyle: { width: 2 }, itemStyle: { color: '#e0455a' }, emphasis: { disabled: true } },
-          { name: '创业板', type: 'line', data: hist.cy, smooth: true, showSymbol: false, lineStyle: { width: 2 }, itemStyle: { color: '#3b7ee8' }, emphasis: { disabled: true } },
+          { name: '上证', type: 'line', data: hist.sh, smooth: true, showSymbol: false, lineStyle: { width: 2.2 }, itemStyle: { color: '#e0455a' }, emphasis: { disabled: true } },
+          { name: '创业板', type: 'line', data: hist.cy, smooth: true, showSymbol: false, lineStyle: { width: 2.2 }, itemStyle: { color: '#2f6df0' }, emphasis: { disabled: true } },
         ],
       });
     }
@@ -203,24 +362,30 @@ createApp({
       try {
         const r = await fetch('/api/screener?upDays=3').then((x) => x.json());
         Object.assign(screen, r);
-        statusText.value = r.updatedAt ? '数据截至 ' + r.updatedAt : statusText.value;
       } catch (e) {
-        statusText.value = '筛选加载失败：' + e.message;
+        statusText.value = '筛选加载失败';
+        statusType.value = 'error';
       }
     }
 
     async function loadStock() {
       if (!/^\d{6}$/.test(stockCode.value)) return;
       searched.value = true;
+      stockLoading.value = true;
       stockName.value = '';
       try {
         const r = await fetch('/api/stock/' + stockCode.value + '?days=60').then((x) => x.json());
         stockName.value = r.name || '';
         stockSeries.value = r.series || [];
+        // 等 v-show 把图表容器显示出来后再初始化
+        await nextTick();
         renderStock();
       } catch (e) {
         stockSeries.value = [];
-        statusText.value = '个股加载失败：' + e.message;
+        statusText.value = '个股加载失败';
+        statusType.value = 'error';
+      } finally {
+        stockLoading.value = false;
       }
     }
 
@@ -230,33 +395,45 @@ createApp({
       if (!stockChart) stockChart = echarts.init(document.getElementById('chart-stock'), null, { renderer: 'canvas' });
       stockChart.setOption({
         tooltip: { trigger: 'axis', valueFormatter: (v) => (v == null ? '-' : String(v)) },
-        legend: { data: ['收盘', 'MA5', 'MA10'], top: 0, itemWidth: 14, itemHeight: 8, textStyle: { fontSize: 11 } },
-        grid: { left: 48, right: 12, top: 28, bottom: 22 },
-        xAxis: { type: 'category', data: s.map((x) => x.date.slice(5)), boundaryGap: false, axisLine: { lineStyle: { color: '#d0d3d8' } }, axisLabel: { fontSize: 10 } },
-        yAxis: { type: 'value', scale: true, splitLine: { lineStyle: { color: '#f0f1f3' } }, axisLabel: { fontSize: 10 } },
+        legend: { data: ['收盘', 'MA5', 'MA10'], top: 0, itemWidth: 14, itemHeight: 8, textStyle: { fontSize: 11, color: '#5a6577' } },
+        grid: { left: 48, right: 14, top: 30, bottom: 24 },
+        xAxis: { type: 'category', data: s.map((x) => x.date.slice(5)), boundaryGap: false, axisLine: { lineStyle: { color: '#d0d3d8' } }, axisLabel: { fontSize: 10, color: '#8a93a6' } },
+        yAxis: { type: 'value', scale: true, splitLine: { lineStyle: { color: '#f2f4f8' } }, axisLabel: { fontSize: 10, color: '#8a93a6' } },
         series: [
-          { name: '收盘', type: 'line', data: s.map((x) => x.close), showSymbol: false, lineStyle: { width: 2 }, itemStyle: { color: '#333' }, emphasis: { disabled: true } },
+          { name: '收盘', type: 'line', data: s.map((x) => x.close), showSymbol: false, lineStyle: { width: 2.2 }, itemStyle: { color: '#1a2233' }, emphasis: { disabled: true } },
           { name: 'MA5', type: 'line', data: s.map((x) => x.ma5), showSymbol: false, lineStyle: { width: 1.5, type: 'dashed' }, itemStyle: { color: '#e0455a' }, emphasis: { disabled: true } },
           { name: 'MA10', type: 'line', data: s.map((x) => x.ma10), showSymbol: false, lineStyle: { width: 1.5, type: 'dashed' }, itemStyle: { color: '#e8a13a' }, emphasis: { disabled: true } },
         ],
       });
     }
 
+    const lastDate = computed(() => hist.dates[hist.dates.length - 1] || '');
+
     const metricCards = computed(() => {
       const lastSh = hist.sh[hist.sh.length - 1];
+      const prevSh = hist.sh[hist.sh.length - 2];
       const lastCy = hist.cy[hist.cy.length - 1];
-      const tone = (v) => (v >= 50 ? '#e0455a' : v >= 40 ? '#e8a13a' : '#2f9e6e');
-      const lastDate = hist.dates[hist.dates.length - 1] || '';
+      const prevCy = hist.cy[hist.cy.length - 2];
+      const tone = (v) => (v == null ? 'var(--text)' : v >= 50 ? 'var(--up)' : v >= 40 ? 'var(--warn)' : 'var(--down)');
+      const accent = (v) => (v == null ? 'transparent' : v >= 50 ? 'var(--up)' : v >= 40 ? 'var(--warn)' : 'var(--down)');
+      const fmtDelta = (last, prev) => {
+        if (last == null || prev == null) return null;
+        const d = Math.round((last - prev) * 10) / 10;
+        return (d > 0 ? '+' : '') + d + 'pp';
+      };
+      const deltaSh = fmtDelta(lastSh, prevSh);
+      const deltaCy = fmtDelta(lastCy, prevCy);
       const ready = screen.readyDays >= screen.neededDays;
       return [
-        { label: '上证拥挤度', value: lastSh != null ? lastSh + '%' : '—', sub: lastDate, color: tone(lastSh) },
-        { label: '创业板拥挤度', value: lastCy != null ? lastCy + '%' : '—', sub: '', color: tone(lastCy) },
-        { label: '筛选命中', value: ready ? screen.count : '—', sub: screen.readyDays + '/' + screen.neededDays + ' 天', color: '#3b7ee8' },
+        { label: '上证拥挤度', value: lastSh != null ? lastSh + '%' : '—', sub: '阈值 40 / 50', color: tone(lastSh), accent: accent(lastSh), delta: deltaSh, deltaDir: deltaSh > 0 ? 'up' : 'down', deltaArrow: deltaSh > 0 ? '▲' : '▼' },
+        { label: '创业板拥挤度', value: lastCy != null ? lastCy + '%' : '—', sub: '阈值 40 / 50', color: tone(lastCy), accent: accent(lastCy), delta: deltaCy, deltaDir: deltaCy > 0 ? 'up' : 'down', deltaArrow: deltaCy > 0 ? '▲' : '▼' },
+        { label: '筛选命中', value: ready ? screen.count : '—', sub: screen.readyDays + '/' + screen.neededDays + ' 天', color: 'var(--primary)', accent: 'var(--primary)', delta: null },
+        { label: '数据状态', value: ready ? '就绪' : '积累中', sub: screen.updatedAt || '', color: ready ? 'var(--down)' : 'var(--warn)', accent: ready ? 'var(--down)' : 'var(--warn)', delta: null },
       ];
     });
 
     const screenStatus = computed(() => {
-      if (screen.readyDays >= screen.neededDays) return '共 ' + screen.count + ' 只符合条件';
+      if (screen.readyDays >= screen.neededDays) return '✓ 共 ' + screen.count + ' 只符合条件';
       return '数据积累中（' + screen.readyDays + '/' + screen.neededDays + ' 个交易日）';
     });
 
@@ -274,7 +451,7 @@ createApp({
     });
     onUnmounted(() => window.removeEventListener('resize', onResize));
 
-    return { tab, tabs, statusText, histDays, hist, screen, stockCode, stockName, stockSeries, searched, metricCards, screenStatus, loadHist, loadScreener, loadStock, switchTab };
+    return { tab, tabs, statusText, statusType, loading, firstLoading, stockLoading, lastDate, histDays, hist, screen, stockCode, stockName, stockSeries, searched, metricCards, screenStatus, loadHist, loadScreener, loadStock, switchTab };
   },
 }).mount('#app');
 </script>

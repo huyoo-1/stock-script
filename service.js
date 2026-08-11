@@ -25,6 +25,12 @@ async function main() {
   });
   const feishu = createFeishuClient(config, logger);
 
+  // 注入配置与日志：让 historyStorage.dir/backupDir 配置真正生效，
+  // 并让 history/priceHistory 在 runIntraday(--once 首条)也能输出内部告警
+  history.setConfig(config);
+  history.setLogger(logger);
+  priceHistory.setLogger(logger);
+
   // 启动自检：发测试消息，早发现凭证/入群问题
   if (!once) {
     logger.info('发送飞书测试消息...');

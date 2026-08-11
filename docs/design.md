@@ -275,13 +275,12 @@ stock-script/
 │   ├── http.js                # 共享反爬 HTTP 客户端（随机 UA / 限速 / 退避重试 / 456 快速失败）
 │   └── log.js                 # 双输出日志（stdout + 文件，10MB 轮转）
 ├── tests/
-│   ├── test_fetch_snapshot.js # 全 A 抓取验证（进度 / 数据质量，--maxPages / --em）
-│   ├── test_sina_sh_a.js      # 新浪反爬小批量验证
-│   ├── test_sina_breadth.js   # 新浪广度统计验证
-│   ├── test_compact.js        # 历史存储 compact 功能测试（跑完自动清理）
-│   ├── test_backup_cleanup.js # 历史备份清理功能测试（跑完自动清理）
-│   ├── probe.js               # 接口契约核实探针
-│   └── run_close_once.js      # 手动跑一次完整收盘流程（抓取 → 推送 → 写入）
+│   ├── breadth.test.js      # 市场广度算法单测（涨跌停判定 / 广度统计）
+│   ├── crowd.test.js        # 拥挤度算法单测（前 5% 集中度 / level / delta）
+│   ├── screener.test.js     # 技术筛选算法单测（MA / 连续上涨 / 筛选）
+│   ├── test-feishu.js       # 飞书凭证自检（npm run test:feishu）
+│   ├── probe.js             # 接口契约核实探针（npm run probe）
+│   └── run_close_once.js    # 手动跑一次完整收盘流程（抓取 → 推送 → 写入）
 ├── data/
 │   ├── holidays.json          # 节假日数据
 │   ├── history/               # 按年份分目录的历史数据（如 2026.json）
