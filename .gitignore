@@ -6,6 +6,7 @@ node_modules/
 
 # 运行时数据与日志
 data/history.json
+data/intraday.json
 data/history/
 data/history_backup
 data/price_history/

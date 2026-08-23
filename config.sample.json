@@ -35,5 +35,11 @@
     "enabled": true,
     "host": "127.0.0.1",
     "port": 8787
+  },
+  "screener": {
+    "ma20Source": "auto",
+    "ma20Days": 20,
+    "concurrency": 4,
+    "cacheTtlMs": 600000
   }
 }

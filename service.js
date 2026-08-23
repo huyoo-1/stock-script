@@ -10,6 +10,7 @@ const { createWebServer } = require('./lib/web');
 const history = require('./lib/history');
 const priceHistory = require('./lib/priceHistory');
 const screener = require('./lib/screener');
+const { createMa20Provider } = require('./lib/kline');
 
 async function main() {
   const once = process.argv.includes('--once');
@@ -24,6 +25,7 @@ async function main() {
     logger,
   });
   const feishu = createFeishuClient(config, logger);
+  const ma20Provider = createMa20Provider({ http, config, logger });
 
   // 注入配置与日志：让 historyStorage.dir/backupDir 配置真正生效，
   // 并让 history/priceHistory 在 runIntraday(--once 首条)也能输出内部告警
@@ -51,13 +53,13 @@ async function main() {
   const scheduler = createScheduler({
     config, logger,
     onIntraday: (time) => runIntraday({ config, http, feishu, logger, intradayCache, time }),
-    onClose: () => runClose({ config, http, feishu, logger, intradayCache }),
+    onClose: () => runClose({ config, http, feishu, logger, intradayCache, ma20Provider }),
   });
   scheduler.start();
 
   // Web 面板（监听地址由 config.web.host 决定，默认 127.0.0.1）
   if (config.web && config.web.enabled) {
-    const web = createWebServer({ config, logger, history, priceHistory, screener });
+    const web = createWebServer({ config, logger, history, priceHistory, screener, ma20: ma20Provider });
     const host = config.web.host || '127.0.0.1';
     web.listen(config.web.port || 8787, host, () => {
       logger.info(`Web 面板已启动：http://${host}:${config.web.port || 8787}`);
