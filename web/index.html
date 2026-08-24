@@ -253,7 +253,7 @@
     <!-- 筛选 -->
     <section v-show="tab === 'screener'">
       <div class="panel">
-        <div class="panel-head"><span>技术筛选<span class="title-sub">连续3日上涨 且 价≥MA5&gt;MA10</span></span></div>
+        <div class="panel-head"><span>技术筛选<span class="title-sub">连续3日上涨 且 现价≥MA5/MA20，MA5&gt;MA10&gt;MA20</span></span></div>
         <div class="screen-status">{{ screenStatus }}</div>
         <div class="list">
           <div class="row" v-for="it in screen.items" :key="it.code">
@@ -265,9 +265,10 @@
               <span><span class="lbl">收</span> {{ it.close }}</span>
               <span><span class="lbl">MA5</span> {{ it.ma5 }}</span>
               <span><span class="lbl">MA10</span> {{ it.ma10 }}</span>
+              <span><span class="lbl">MA20</span> {{ it.ma20 != null ? it.ma20 : '—' }}</span>
             </div>
           </div>
-          <div class="empty" v-if="screen.items.length === 0">暂无符合条件的股票（积累满 10 个交易日后有效）</div>
+          <div class="empty" v-if="screen.items.length === 0">暂无符合条件的股票（需积累满 10 个交易日且通过 MA20 精筛）</div>
         </div>
       </div>
     </section>
@@ -309,6 +310,7 @@ createApp({
     const histDays = ref(60);
     const hist = reactive({ dates: [], sh: [], cy: [] });
     const screen = reactive({ count: 0, readyDays: 0, neededDays: 10, updatedAt: null, items: [] });
+    const screenLoading = ref(false);
     const stockCode = ref('');
     const stockName = ref('');
     const stockSeries = ref([]);
@@ -359,12 +361,15 @@ createApp({
     }
 
     async function loadScreener() {
+      screenLoading.value = true;
       try {
         const r = await fetch('/api/screener?upDays=3').then((x) => x.json());
         Object.assign(screen, r);
       } catch (e) {
         statusText.value = '筛选加载失败';
         statusType.value = 'error';
+      } finally {
+        screenLoading.value = false;
       }
     }
 
@@ -433,8 +438,10 @@ createApp({
     });
 
     const screenStatus = computed(() => {
-      if (screen.readyDays >= screen.neededDays) return '✓ 共 ' + screen.count + ' 只符合条件';
-      return '数据积累中（' + screen.readyDays + '/' + screen.neededDays + ' 个交易日）';
+      if (screen.readyDays < screen.neededDays) return '数据积累中（' + screen.readyDays + '/' + screen.neededDays + ' 个交易日）';
+      if (screenLoading.value) return '正在拉取 MA20 二次精筛...';
+      if (screen.ma20Source === 'off') return '✓ 共 ' + screen.count + ' 只符合条件（未启用 MA20 精筛）';
+      return '✓ 共 ' + screen.count + ' 只符合 MA5>MA10>MA20（本地粗筛 ' + screen.candidates + ' 只，缺失 ' + screen.ma20Missing + ' 只）';
     });
 
     function switchTab(id) {
@@ -451,7 +458,7 @@ createApp({
     });
     onUnmounted(() => window.removeEventListener('resize', onResize));
 
-    return { tab, tabs, statusText, statusType, loading, firstLoading, stockLoading, lastDate, histDays, hist, screen, stockCode, stockName, stockSeries, searched, metricCards, screenStatus, loadHist, loadScreener, loadStock, switchTab };
+    return { tab, tabs, statusText, statusType, loading, firstLoading, stockLoading, screenLoading, lastDate, histDays, hist, screen, stockCode, stockName, stockSeries, searched, metricCards, screenStatus, loadHist, loadScreener, loadStock, switchTab };
   },
 }).mount('#app');
 </script>

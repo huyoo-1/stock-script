@@ -47,20 +47,25 @@ nssm start AStockCrowdMonitor
 
 **可用。** 数据抓取、飞书推送、本地历史写入全链路已跑通（2026-08-08 实测：全 A 5538 只，全程未触发封禁）。
 
+技术筛选采用两级过滤：本地 10 日粗筛（连续 3 日涨 + 现价≥MA5>MA10）→ 腾讯/新浪日 K 二次精筛（现价≥MA20 且 MA5>MA10>MA20），可通过 `config.screener` 调整。
+
 ## 数据源策略
 
 - **主源：新浪财经**（当前网络最稳定）——全 A 分页抓取（约 70 页）、指数/ETF 行情、B 股
 - **备选：东方财富**——融资融券余额走东财 `datacenter`（实测可用）；`push2` 行情接口在当前网络必失败，仅作兜底
 - **反爬**：分页串行 + 随机间隔/UA/Cookie/Referer；456 封禁快速失败并降级，不无谓重试
+- **腾讯日 K 防封**：同源随机间隔 600-1200ms + 并发 4 + 失败缓存；501 视为 WAF 封禁，快速失败并冷却该域名，自动切备选域名
+- **新浪日 K**：复用新浪反爬（Referer/Cookie/限速），作为腾讯不可用时的兜底
 
 ## 测试脚本（tests/）
 
 | 脚本 | 用途 |
 |---|---|
-| `breadth.test.js` / `crowd.test.js` / `screener.test.js` | 算法单测（`node --test tests/*.test.js`） |
+| `breadth.test.js` / `crowd.test.js` / `screener.test.js` / `kline.test.js` | 算法 + 数据源解析单测（`node --test tests/*.test.js`） |
 | `test-feishu.js` | 飞书凭证自检（`npm run test:feishu`） |
 | `probe.js` | 接口契约核实探针（`npm run probe`） |
 | `run_close_once.js` | 手动跑一次完整收盘流程 |
+| `trial_ma20.js` | 用本地收盘快照试跑 MA20 二次精筛（真实联网） |
 
 ## 已知限制
 

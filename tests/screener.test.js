@@ -2,7 +2,7 @@
 // 用法: node --test tests/screener.test.js
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { ma, consecutiveUp, runScreener, readyDays, MA10_DAYS } = require('../lib/screener');
+const { ma, consecutiveUp, runScreener, applyMa20Filter, readyDays, MA10_DAYS, MA20_DAYS } = require('../lib/screener');
 
 // 造 daysData：每只股票的收盘价序列
 function makeDaysData(stocks, dates) {
@@ -85,5 +85,56 @@ describe('readyDays', () => {
       { date: '2025-01-04', rows: [{ code: '1', close: 11 }] },
     ];
     assert.equal(readyDays(days), 2);
+  });
+});
+
+describe('applyMa20Filter', () => {
+  it('保留 ma5>ma10>ma20 的股票', async () => {
+    const items = [
+      { code: '600001', name: 'A', close: 11.6, ma5: 11.4, ma10: 11.0 },
+      { code: '600002', name: 'B', close: 10.2, ma5: 10.1, ma10: 10.0 },
+    ];
+    const fetchMa20 = async (code) => ({ '600001': 9.5, '600002': 9.8 })[code];
+    const out = await applyMa20Filter(items, fetchMa20, { concurrency: 2 });
+    assert.equal(out.checked, 2);
+    assert.deepEqual(out.items.map((i) => i.code), ['600001', '600002']);
+    assert.equal(out.items[0].ma20, 9.5);
+    assert.equal(out.missing.length, 0);
+  });
+
+  it('ma10<=ma20 剔除，保持原顺序', async () => {
+    const items = [
+      { code: '600001', name: 'A', close: 11.6, ma5: 11.4, ma10: 11.0 }, // ma10 11.0 > ma20 10.5 → 保留
+      { code: '600002', name: 'B', close: 10.2, ma5: 10.1, ma10: 10.0 }, // ma10 10.0 <= ma20 10.5 → 剔除
+    ];
+    const fetchMa20 = async () => 10.5;
+    const out = await applyMa20Filter(items, fetchMa20, { concurrency: 2 });
+    assert.deepEqual(out.items.map((i) => i.code), ['600001']);
+  });
+
+  it('现价 < MA20 剔除（即使 ma10 > ma20）', async () => {
+    const items = [
+      { code: '600001', name: 'A', close: 9.5, ma5: 11.4, ma10: 11.0 }, // close 9.5 < ma20 10.0 → 剔除
+    ];
+    const fetchMa20 = async () => 10.0;
+    const out = await applyMa20Filter(items, fetchMa20);
+    assert.equal(out.items.length, 0);
+  });
+
+  it('MA20 获取失败计入 missing', async () => {
+    const items = [{ code: '600001', name: 'A', close: 11.6, ma5: 11.4, ma10: 11.0 }];
+    const fetchMa20 = async () => null;
+    const out = await applyMa20Filter(items, fetchMa20);
+    assert.equal(out.items.length, 0);
+    assert.equal(out.missing.length, 1);
+    assert.equal(out.missing[0].code, '600001');
+  });
+
+  it('fetchMa20 抛错按缺失处理', async () => {
+    const items = [{ code: '600001', name: 'A', close: 11.6, ma5: 11.4, ma10: 11.0 }];
+    const fetchMa20 = async () => { throw new Error('boom'); };
+    const out = await applyMa20Filter(items, fetchMa20);
+    assert.equal(out.items.length, 0);
+    assert.equal(out.missing.length, 1);
   });
 });
