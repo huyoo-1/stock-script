@@ -16,6 +16,8 @@
   "mode": "both",
   "intradayPoints": ["10:00", "11:00", "14:00"],
   "closeTime": "19:00",
+  "logDir": "logs",
+  "logConsoleLevel": "ERROR",
   "etfWhitelist": ["510300", "510050", "510500", "510310", "159915"],
   "etfSurgeRatio": 2.5,
   "marginUnit": "亿元",
@@ -40,7 +42,10 @@
     "ma20Source": "auto",
     "ma20Days": 20,
     "concurrency": 4,
-    "cacheTtlMs": 600000
+    "cacheTtlMs": 600000,
+    "bjCutoff": true,
+    "bjFailureThreshold": 3,
+    "bjWindowSize": 10
   },
   "goldStocks": ["600547", "601899", "600489", "002155", "600988", "518880", "159934"],
   "dataSources": {

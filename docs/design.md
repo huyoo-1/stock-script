@@ -283,7 +283,7 @@ stock-script/
 │   │   ├── scheduler.js       # 定时调度（setTimeout 递归锚定 HH:MM，交易日/时段判断）
 │   │   ├── calendar.js        # 交易日历判断（节假日 / 周末 / 交易时段）
 │   │   ├── http.js            # 共享反爬 HTTP 客户端（随机 UA / 限速 / 退避重试 / 456 快速失败）
-│   │   └── log.js             # 双输出日志（stdout + 文件，10MB 轮转）
+│   │   └── log.js             # 双输出日志（文件全量 + 控制台按级别过滤，10MB 轮转）
 │   ├── data/                  # 数据源策略模式
 │   │   ├── base.js            # BaseFetcher 契约
 │   │   ├── manager.js         # FetcherManager：按 capability 路由 + 优先级 + failover
@@ -333,8 +333,8 @@ stock-script/
 │   ├── gold_history/          # 金价与黄金股日快照
 │   ├── watchlist.json         # 关注列表
 ├── logs/
-│   ├── run.log                # 运行日志（stdout/stderr）
-│   └── error.log              # 错误日志
+│   ├── index.log              # 运行日志（文件侧 INFO 及以上）
+│   └── error.log              # 错误日志（ERROR 级别）
 ├── CLAUDE.md                  # Claude Code 项目指引
 ├── README.md
 └── package.json
@@ -456,6 +456,8 @@ stock-script/
 | `mode`               | 推送模式：`intraday`（仅盘中）/ `close`（仅收盘）/ `both`（两者，默认）                             |
 | `intradayPoints`     | 盘中快照时间点列表（HH:mm），默认 10:00、11:00、14:00                                         |
 | `closeTime`          | 收盘汇总时间点（HH:mm），默认 19:00（融资融券当日数据约 18:00 才发布）                                 |
+| `logDir`             | 日志目录，默认 `logs`（相对项目根目录），可配绝对路径如 `/data/log`                                   |
+| `logConsoleLevel`    | 控制台日志级别：`DEBUG`/`INFO`/`WARN`/`ERROR`（默认 `ERROR`，控制台只显示错误）                     |
 | `etfWhitelist`       | 国家队代理监控的宽基 ETF 代码列表，默认 510300/510050/510500/510310/159915                     |
 | `etfSurgeRatio`      | 疑似国家队成交额放大倍数阈值（当日/前一日成交额，默认 2.5 倍）                                            |
 | `marginUnit`         | 融资融券金额展示单位，默认“亿元”                                                             |
@@ -476,6 +478,9 @@ stock-script/
 | `screener.ma20Days`  | MA20 计算天数（默认 20）                                                                |
 | `screener.concurrency` | 精筛并发请求数（默认 4）                                                                |
 | `screener.cacheTtlMs` | 日 K 缓存有效期（默认 600000 ms）                                                       |
+| `screener.bjCutoff`  | MA20 精筛时是否启用北交所熔断（默认 true）：窗口内失败频率过高则跳过北交所日K，避免卡住 |
+| `screener.bjFailureThreshold` | 北交所日K失败多少次即触发跳过（默认 3）                                          |
+| `screener.bjWindowSize` | 北交所日K失败统计窗口大小（默认 10）                                                 |
 | `goldStocks`         | 黄金走势页面跟踪的黄金股 / ETF 代码列表                                                     |
 | `dataSources.circuitBreaker.enabled` | 是否启用数据源域名级熔断（默认 true）                                            |
 | `dataSources.circuitBreaker.failureThreshold` | 连续失败多少次触发熔断（默认 3）                                         |
@@ -621,6 +626,7 @@ stock-script/
 
 1. **本地粗筛**（`lib/algo/screener.js`）：基于近 10 日收盘价快照，筛选出「连续 3 日上涨 且 现价 ≥ MA5 > MA10」的个股。需要至少积累满 10 个交易日才具备计算条件。
 2. **MA20 二次精筛**：对粗筛结果并发拉取日 K 数据（默认腾讯主源、新浪兜底，可配置 `screener.ma20Source`），计算 MA20，仅保留「现价 ≥ MA20 且 MA5 > MA10 > MA20」的个股。无法取得 MA20 的股票计入 `ma20Missing`，不强行按 0 处理。
+3. **北交所熔断**：部分免费数据源对北交所（4/8/92 开头）支持不稳定，为避免精筛长时间卡住，当最近 `screener.bjWindowSize` 次北交所请求中失败达到 `screener.bjFailureThreshold` 次时，后续北交所股票直接跳过，计入 `ma20Missing`。可通过 `screener.bjCutoff` 关闭。
 
 精筛结果落盘到 `data/price_history/screener_result.json`，Web 面板 `/api/screener` 优先直读该文件，避免每次访问都重算日 K；当缓存与请求的 `upDays` 不符或无缓存时，才回退到实时计算。
 
@@ -817,7 +823,7 @@ Web 面板是一个零 npm 依赖的单文件应用（`web/index.html`：Vue 3 g
 node service.js
 ```
 
-后台常驻运行需配合下文开机自启方案，并将 stdout/stderr 重定向到 `logs/run.log`。
+后台常驻运行需配合下文开机自启方案，并将 stdout/stderr 重定向到 `logs/index.log`（或 `logDir` 指定路径）。
 
 ### 12.3 开机自启方案（二选一）
 
@@ -842,8 +848,8 @@ node service.js
 ```powershell
 nssm install AStockCrowdMonitor "C:\Program Files\nodejs\node.exe" "service.js"
 nssm set AStockCrowdMonitor AppDirectory "d:\front\test\stock-script"
-nssm set AStockCrowdMonitor AppStdout "d:\front\test\stock-script\logs\run.log"
-nssm set AStockCrowdMonitor AppStderr "d:\front\test\stock-script\logs\run.log"
+nssm set AStockCrowdMonitor AppStdout "d:\front\test\stock-script\logs\index.log"
+nssm set AStockCrowdMonitor AppStderr "d:\front\test\stock-script\logs\index.log"
 nssm set AStockCrowdMonitor AppRotateFiles 1
 nssm set AStockCrowdMonitor AppRotateBytes 10485760
 nssm start AStockCrowdMonitor
@@ -856,7 +862,7 @@ nssm start AStockCrowdMonitor
 
 ### 12.4 验证服务
 
-1. 启动后观察 `logs/run.log`，确认进程常驻、无立即退出；
+1. 启动后观察 `logs/index.log`（或 `logDir` 指定目录），确认进程常驻、无立即退出；
 2. 手动触发一次计算（可临时把某快照点改为当前时间，或运行单次计算入口）确认消息已推送到飞书；
 3. 等待下一个快照点，确认盘中快照自动触发并推送；
 4. 进程异常时确认外层（nssm / 任务计划）或进程内兜底已生效。

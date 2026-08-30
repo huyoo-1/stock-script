@@ -60,7 +60,7 @@ A 股大盘拥挤度监控：Node.js 22 常驻服务，盘中定时计算上证�
 | 模块 | 职责 |
 |------|------|
 | [core/config.js](lib/core/config.js) | 加载 + 校验 config.json，fail-fast（飞书凭证非空等） |
-| [core/log.js](lib/core/log.js) | stdout + 文件日志，run.log 超 10MB 轮转，error 额外写 error.log |
+| [core/log.js](lib/core/log.js) | stdout + 文件日志，index.log 超 10MB 轮转，error 额外写 error.log；控制台默认只输出 ERROR |
 | [core/http.js](lib/core/http.js) | 共享反爬 HTTP 客户端：随机 UA / 限速 / 退避重试 / 456 快速失败降级 |
 | [core/calendar.js](lib/core/calendar.js) | 交易日/时段/午休判断，读 `data/holidays.json` |
 | [core/scheduler.js](lib/core/scheduler.js) | setTimeout 递归调度（非 setInterval，避免漂移），盘中点 + 19:00 |
@@ -99,7 +99,7 @@ A 股大盘拥挤度监控：Node.js 22 常驻服务，盘中定时计算上证�
 - `data/history_backup/`：写入前自动备份
 - `data/price_history/`：收盘价快照积累 + `screener_result.json`（精筛结果）
 - `data/watchlist.json`：关注列表（纯代码数组，Web 面板读写）
-- `logs/run.log` + `logs/error.log`：运行/错误日志
+- `logs/index.log` + `logs/error.log`：运行/错误日志（`logDir` 可配置，控制台默认只输出 ERROR）
 
 ### 配置
 `config.json`（gitignore，从 `config.sample.json` 复制）控制飞书凭证、指数、阈值、推送模式、快照点、ETF 白名单、历史存储等。新增配置项必须同步更新 `config.sample.json`。

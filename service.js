@@ -59,7 +59,7 @@ function createFetcherManager({ config, logger }) {
 async function main() {
   const once = process.argv.includes('--once');
   const config = loadConfig(path.join(__dirname, 'config.json'));
-  const logger = createLogger(path.join(__dirname, 'logs'));
+  const logger = createLogger(path.resolve(__dirname, config.logDir || 'logs'), { consoleLevel: config.logConsoleLevel || 'ERROR' });
   logger.info('监控服务启动中...');
 
   const http = createHttpClient({
