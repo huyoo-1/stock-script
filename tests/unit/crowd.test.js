@@ -2,7 +2,7 @@
 // 用法: node --test tests/crowd.test.js
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { computeCrowding, levelOf, deltaText } = require('../lib/crowd');
+const { computeCrowding, levelOf, deltaText } = require('../../lib/algo/crowd');
 
 const TH = { normal: 40, warning: 50 };
 

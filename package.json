@@ -7,17 +7,22 @@
   "scripts": {
     "start": "node service.js",
     "once": "node service.js --once",
-    "probe": "node tests/probe.js",
-    "test:feishu": "node tests/test-feishu.js"
+    "probe": "node tests/scripts/probe.js",
+    "test:feishu": "node tests/scripts/test-feishu.js",
+    "test": "node --test tests/unit/breadth.test.js tests/unit/crowd.test.js tests/unit/fetcher.test.js tests/unit/kline.test.js tests/unit/screener.test.js"
   },
   "dependencies": {
-    "axios": "^1.7.0",
-    "@larksuiteoapi/node-sdk": "^1.71.0"
+    "@larksuiteoapi/node-sdk": "^1.71.0",
+    "axios": "^1.7.0"
   },
   "optionalDependencies": {
     "https-proxy-agent": "^7.0.0"
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "@playwright/mcp": "^0.0.79",
+    "@playwright/test": "^1.62.1"
   }
 }

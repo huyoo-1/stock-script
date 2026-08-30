@@ -1,13 +1,16 @@
-// tests/trial_ma20.js
+// tests/scripts/trial_ma20.js
 // 用 data/price_history 真实数据试跑 MA20 二次精筛：
-// 本地 10 日粗筛 → 数据源日 K（auto=腾讯→新浪）→ 输出多头趋势命中明细。
-// 用法: node tests/trial_ma20.js
+// 本地 10 日粗筛 → 数据源日 K（走 FetcherManager）→ 输出多头趋势命中明细。
+// 用法: node tests/scripts/trial_ma20.js
 const path = require('path');
-const { loadConfig } = require('../lib/config');
-const { createHttpClient } = require('../lib/http');
-const { createMa20Provider, fetchKlines } = require('../lib/kline');
-const priceHistory = require('../lib/priceHistory');
-const screener = require('../lib/screener');
+const { loadConfig } = require('../../lib/core/config');
+const { createHttpClient } = require('../../lib/core/http');
+const { CircuitBreaker } = require('../../lib/data/breakers');
+const { FetcherManager } = require('../../lib/data/manager');
+const { TencentKlineFetcher, SinaKlineFetcher } = require('../../lib/data/kline');
+const { createMa20Provider } = require('../../lib/kline');
+const priceHistory = require('../../lib/store/priceHistory');
+const screener = require('../../lib/algo/screener');
 
 const logger = {
   info() {},
@@ -16,7 +19,7 @@ const logger = {
 };
 
 async function main() {
-  const root = path.join(__dirname, '..');
+  const root = path.join(__dirname, '..', '..');
   const config = loadConfig(path.join(root, 'config.json'));
   const http = createHttpClient({
     maxRetries: config.maxRetries,
@@ -24,6 +27,10 @@ async function main() {
     nid18Enabled: config.nid18Enabled,
     logger,
   });
+  const cb = new CircuitBreaker();
+  const fetcherMgr = new FetcherManager({ circuitBreaker: cb, logger });
+  fetcherMgr.addFetcher(new TencentKlineFetcher());
+  fetcherMgr.addFetcher(new SinaKlineFetcher());
 
   const recent = priceHistory.loadRecentDays(screener.MA10_DAYS);
   const candidates = screener.runScreener(recent);
@@ -35,15 +42,19 @@ async function main() {
   for (const it of candidates.slice(0, 5)) {
     const t = Date.now();
     try {
-      const r = await fetchKlines({ http, code: it.code, days: 20, source: 'auto', logger });
-      console.log(`${it.code} ${it.name}: source=${r.source} rows=${r.rows.length} first=${r.rows[0] && r.rows[0].date} last=${r.rows[r.rows.length - 1] && r.rows[r.rows.length - 1].date} ${Date.now() - t}ms`);
+      const { result, source } = await fetcherMgr.execute(http, { code: it.code, days: 20 }, {
+        capability: 'kline',
+        validate: (rows) => Array.isArray(rows) && rows.length >= 20,
+      });
+      const rows = result || [];
+      console.log(`${it.code} ${it.name}: source=${source} rows=${rows.length} first=${rows[0] && rows[0].date} last=${rows[rows.length - 1] && rows[rows.length - 1].date} ${Date.now() - t}ms`);
     } catch (e) {
       console.log(`${it.code} ${it.name}: FAIL ${e.message}`);
     }
   }
 
   // 2. 全量二次精筛
-  const provider = createMa20Provider({ http, config, logger });
+  const provider = createMa20Provider({ http, config, logger, fetcherMgr });
   if (!provider.enabled) {
     console.log('\nMA20 精筛未启用（screener.ma20Source=off）');
     return;

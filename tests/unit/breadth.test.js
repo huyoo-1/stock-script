@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const {
   isBseCode, isKcCyStock, isStStock, limitRatio,
   limitUpPrice, limitDownPrice, computeBreadth, activityTier,
-} = require('../lib/breadth');
+} = require('../../lib/algo/breadth');
 
 describe('isBseCode', () => {
   it('92/43/81 开头为北交所', () => {

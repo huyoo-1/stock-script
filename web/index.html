@@ -121,7 +121,9 @@
   .chart { width: 100%; height: 260px; }
 
   .screen-status { font-size: 13px; color: var(--primary); margin-bottom: 12px; display: inline-flex; align-items: center; gap: 6px; background: var(--primary-soft); padding: 6px 12px; border-radius: 999px; font-weight: 600; }
-  .list .row { display: flex; justify-content: space-between; align-items: center; padding: 13px 6px; border-bottom: 1px solid var(--line-soft); transition: background .15s, transform .15s; border-radius: 10px; }
+  .list .row { display: flex; justify-content: space-between; align-items: center; padding: 13px 6px; border-bottom: 1px solid var(--line-soft); transition: background .15s, transform .15s; border-radius: 10px; height: 56px; box-sizing: border-box; flex-shrink: 0; overflow: hidden; }
+  .list { position: relative; overflow-y: auto; max-height: calc(100vh - 240px); -webkit-overflow-scrolling: touch; }
+  .list .spacer { flex-shrink: 0; }
   .list .row:hover { background: var(--card-soft); transform: translateX(2px); }
   .list .row:last-child { border-bottom: none; }
   .row-main { min-width: 0; }
@@ -132,6 +134,58 @@
   .row-nums .lbl { color: var(--sub); font-weight: 600; }
 
   .empty { text-align: center; color: var(--sub); font-size: 13px; padding: 40px 0; font-weight: 500; }
+
+  /* 筛选器 */
+  .filters { margin-bottom: 4px; }
+  .filter-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .filter-label { font-size: 12px; color: var(--sub); font-weight: 600; flex-shrink: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    border: 1px solid var(--line); background: var(--card-soft); color: var(--text-2);
+    padding: 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all .15s; touch-action: manipulation; white-space: nowrap;
+  }
+  .chip:hover { border-color: var(--primary); color: var(--primary); }
+  .chip.active { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 600; }
+  .filter-summary { font-size: 12px; color: var(--sub); font-weight: 500; margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+  .reset-link { border: none; background: none; color: var(--primary); font-size: 12px; cursor: pointer; padding: 0; font-weight: 600; touch-action: manipulation; }
+  .row-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .watch-btn { flex-shrink: 0; width: 30px; height: 30px; border: none; background: none; font-size: 20px; color: var(--line); cursor: pointer; line-height: 1; padding: 0; touch-action: manipulation; transition: color .15s; }
+  .watch-btn:hover { color: var(--warn); }
+  .watch-btn.on { color: var(--warn); }
+  .board-tag { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 4px; margin-left: 5px; vertical-align: middle; }
+  .board-tag.main { color: var(--text-2); background: var(--line-soft); }
+  .board-tag.cy { color: var(--up); background: var(--up-soft); }
+  .board-tag.kcb { color: var(--primary); background: var(--primary-soft); }
+  .board-tag.bjs { color: var(--warn); background: var(--warn-soft); }
+
+  /* 配置页 */
+  .config-group { margin-bottom: 18px; }
+  .config-group-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line-soft); }
+  .config-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .config-field { display: flex; flex-direction: column; gap: 4px; }
+  .config-field label { font-size: 12px; color: var(--sub); font-weight: 500; }
+  .config-field input, .config-field select {
+    height: 38px; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px;
+    font-size: 13px; background: var(--card-soft); color: var(--text); outline: none;
+    transition: border-color .2s, box-shadow .2s; -webkit-appearance: none; appearance: none;
+  }
+  .config-field input:focus, .config-field select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+  .config-field.checkbox { flex-direction: row; align-items: center; gap: 8px; }
+  .config-field.checkbox input { height: 18px; width: 18px; }
+  .config-field.checkbox label { font-size: 13px; color: var(--text); font-weight: 500; }
+  .config-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+  .config-msg { font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px; }
+  .config-msg.ok { color: var(--down); background: var(--down-soft); }
+  .config-msg.error { color: var(--up); background: var(--up-soft); }
+  .danger-zone { margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--line); }
+  .danger-zone-title { font-size: 13px; font-weight: 700; color: var(--up); margin-bottom: 10px; }
+  .btn-danger { height: 40px; padding: 0 20px; border: 1px solid var(--up); border-radius: 8px; background: var(--up-soft); color: var(--up); font-size: 13px; font-weight: 700; cursor: pointer; transition: all .2s; touch-action: manipulation; }
+  .btn-danger:hover:not(:disabled) { background: var(--up); color: #fff; }
+  .btn-danger:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primary { height: 40px; padding: 0 24px; border: none; border-radius: 8px; background: var(--primary); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; transition: background .2s; touch-action: manipulation; }
+  .btn-primary:hover { background: var(--primary-dark); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
 
   /* 个股查询 */
   .search { display: flex; gap: 10px; }
@@ -255,20 +309,56 @@
       <div class="panel">
         <div class="panel-head"><span>技术筛选<span class="title-sub">连续3日上涨 且 现价≥MA5/MA20，MA5&gt;MA10&gt;MA20</span></span></div>
         <div class="screen-status">{{ screenStatus }}</div>
-        <div class="list">
-          <div class="row" v-for="it in screen.items" :key="it.code">
-            <div class="row-main">
-              <div class="row-code">{{ it.code }}</div>
-              <div class="row-name">{{ it.name }}</div>
-            </div>
-            <div class="row-nums">
-              <span><span class="lbl">收</span> {{ it.close }}</span>
-              <span><span class="lbl">MA5</span> {{ it.ma5 }}</span>
-              <span><span class="lbl">MA10</span> {{ it.ma10 }}</span>
-              <span><span class="lbl">MA20</span> {{ it.ma20 != null ? it.ma20 : '—' }}</span>
+        <div class="filters" v-if="screen.items.length > 0">
+          <div class="filter-row">
+            <span class="filter-label">板块</span>
+            <div class="chips">
+              <button v-for="b in boardFilters" :key="b.value" class="chip" :class="{ active: filterBoard === b.value }" @click="toggleBoard(b.value)">{{ b.label }}</button>
             </div>
           </div>
-          <div class="empty" v-if="screen.items.length === 0">暂无符合条件的股票（需积累满 10 个交易日且通过 MA20 精筛）</div>
+          <div class="filter-row">
+            <span class="filter-label">价格</span>
+            <div class="chips">
+              <button v-for="p in priceFilters" :key="p.value" class="chip" :class="{ active: filterPrice === p.value }" @click="togglePrice(p.value)">{{ p.label }}</button>
+            </div>
+          </div>
+          <div class="filter-row">
+            <span class="filter-label">关注</span>
+            <div class="chips">
+              <button class="chip" :class="{ active: filterWatched }" @click="filterWatched = !filterWatched">已关注</button>
+            </div>
+            <span class="config-msg error" v-if="watchMsg" style="margin-left:8px">{{ watchMsg }}</span>
+            <span class="filter-summary">
+              <span>{{ filteredItems.length }} / {{ screen.items.length }} 只</span>
+              <button class="reset-link" v-if="hasFilter" @click="resetFilter">重置</button>
+            </span>
+          </div>
+        </div>
+        <div class="list" ref="scroller" @scroll.passive="onListScroll">
+          <div class="skeleton" v-if="screenLoading" style="padding: 40px 0; text-align: center; color: var(--sub)">加载中...</div>
+          <template v-else>
+            <div class="empty" v-if="screen.items.length === 0">暂无符合条件的股票（需积累满 10 个交易日且通过 MA20 精筛）</div>
+            <div class="empty" v-else-if="filteredItems.length === 0">当前筛选条件下无匹配个股，试试<span class="reset-link" @click="resetFilter">重置筛选</span></div>
+            <template v-else>
+              <div class="spacer" :style="{ height: topHeight + 'px' }"></div>
+              <div class="row" v-for="it in visibleItems" :key="it.code">
+                <div class="row-left">
+                  <button class="watch-btn" :class="{ on: watched[it.code] }" @click="toggleWatch(it.code)" :title="watched[it.code] ? '取消关注' : '加入关注'">★</button>
+                  <div class="row-main">
+                    <div class="row-code">{{ it.code }}<span class="board-tag" :class="it.boardClass">{{ it.board }}</span></div>
+                    <div class="row-name">{{ it.name }}</div>
+                  </div>
+                </div>
+                <div class="row-nums">
+                  <span><span class="lbl">收</span> {{ it.close }}</span>
+                  <span><span class="lbl">MA5</span> {{ it.ma5 }}</span>
+                  <span><span class="lbl">MA10</span> {{ it.ma10 }}</span>
+                  <span><span class="lbl">MA20</span> {{ it.ma20 != null ? it.ma20 : '—' }}</span>
+                </div>
+              </div>
+              <div class="spacer" :style="{ height: bottomHeight + 'px' }"></div>
+            </template>
+          </template>
         </div>
       </div>
     </section>
@@ -286,13 +376,195 @@
         <div class="empty" v-if="searched && !stockLoading && stockSeries.length === 0">暂无该股数据（数据积累中或代码有误）</div>
       </div>
     </section>
+
+    <!-- 黄金 -->
+    <section v-show="tab === 'gold'">
+      <div class="panel">
+        <div class="panel-head">
+          <span>黄金走势<span class="title-sub">伦敦金现货（美元/盎司）叠加黄金股/ETF 收盘价</span></span>
+          <div class="seg">
+            <button v-for="d in [30, 60, 120]" :key="d" :class="{ active: goldDays === d }" @click="loadGold(d)">{{ d }}日</button>
+          </div>
+        </div>
+        <div id="chart-gold" class="chart" v-show="goldSeries.dates.length > 0"></div>
+        <div class="skeleton sk-chart" v-if="goldLoading"></div>
+        <div class="empty" v-if="!goldLoading && goldSeries.dates.length === 0">暂无黄金数据（收盘后积累）</div>
+      </div>
+    </section>
+
+    <!-- 配置 -->
+    <section v-show="tab === 'config'">
+      <div class="panel">
+        <div class="panel-head"><span>配置管理<span class="title-sub">改完保存后需重启服务生效</span></span></div>
+
+        <div class="danger-zone">
+          <div class="danger-zone-title">手动触发收盘流程</div>
+          <div class="config-actions">
+            <button class="btn-danger" :disabled="closeRunning" @click="triggerClose">{{ closeRunning ? '执行中...' : '触发收盘汇总' }}</button>
+            <span class="config-msg" :class="closeMsgType" v-if="closeMsg">{{ closeMsg }}</span>
+          </div>
+        </div>
+
+        <div v-if="configLoading" class="empty">加载配置中...</div>
+        <div v-else>
+          <div class="config-group">
+            <div class="config-group-title">基础</div>
+            <div class="config-fields">
+              <div class="config-field">
+                <label>推送模式</label>
+                <select v-model="configForm.mode"><option value="intraday">盘中</option><option value="close">收盘</option><option value="both">全部</option></select>
+              </div>
+              <div class="config-field">
+                <label>盘中快照点（逗号分隔）</label>
+                <input v-model="configForm.intradayPointsText" placeholder="10:00,11:00,14:00">
+              </div>
+              <div class="config-field">
+                <label>收盘时间（HH:MM）</label>
+                <input v-model="configForm.closeTime" placeholder="19:00">
+              </div>
+              <div class="config-field">
+                <label>拥挤度-正常阈值</label>
+                <input type="number" v-model.number="configForm.thresholds.normal">
+              </div>
+              <div class="config-field">
+                <label>拥挤度-预警阈值</label>
+                <input type="number" v-model.number="configForm.thresholds.warning">
+              </div>
+              <div class="config-field">
+                <label>历史保留天数</label>
+                <input type="number" v-model.number="configForm.historyDays">
+              </div>
+              <div class="config-field">
+                <label>抓取重试次数</label>
+                <input type="number" v-model.number="configForm.maxRetries">
+              </div>
+              <div class="config-field">
+                <label>飞书卡片字节上限</label>
+                <input type="number" v-model.number="configForm.feishuMaxBytes">
+              </div>
+            </div>
+          </div>
+
+          <div class="config-group">
+            <div class="config-group-title">飞书推送</div>
+            <div class="config-fields">
+              <div class="config-field">
+                <label>App ID</label>
+                <input v-model="configForm.feishu.appId" placeholder="cli_xxx">
+              </div>
+              <div class="config-field">
+                <label>App Secret</label>
+                <input type="password" v-model="configForm.feishu.appSecret" placeholder="已设置（不显示）">
+              </div>
+              <div class="config-field">
+                <label>群 Chat ID</label>
+                <input v-model="configForm.feishu.chatId" placeholder="oc_xxx">
+              </div>
+              <div class="config-field">
+                <label>域名</label>
+                <select v-model="configForm.feishu.domain"><option value="feishu">feishu</option><option value="lark">lark</option></select>
+              </div>
+            </div>
+          </div>
+
+          <div class="config-group">
+            <div class="config-group-title">技术筛选</div>
+            <div class="config-fields">
+              <div class="config-field">
+                <label>ETF 白名单（逗号分隔）</label>
+                <input v-model="configForm.etfWhitelistText" placeholder="510300,510050,510500">
+              </div>
+              <div class="config-field">
+                <label>ETF 异动倍数</label>
+                <input type="number" step="0.1" v-model.number="configForm.etfSurgeRatio">
+              </div>
+              <div class="config-field">
+                <label>融资融券单位</label>
+                <input v-model="configForm.marginUnit">
+              </div>
+              <div class="config-field">
+                <label>MA20 数据源</label>
+                <select v-model="configForm.screener.ma20Source"><option value="auto">auto</option><option value="tencent">tencent</option><option value="sina">sina</option><option value="off">off</option></select>
+              </div>
+              <div class="config-field">
+                <label>MA20 天数</label>
+                <input type="number" v-model.number="configForm.screener.ma20Days">
+              </div>
+              <div class="config-field">
+                <label>精筛并发数</label>
+                <input type="number" v-model.number="configForm.screener.concurrency">
+              </div>
+              <div class="config-field">
+                <label>日K缓存毫秒</label>
+                <input type="number" v-model.number="configForm.screener.cacheTtlMs">
+              </div>
+            </div>
+          </div>
+
+          <div class="config-group">
+            <div class="config-group-title">数据源熔断</div>
+            <div class="config-fields">
+              <div class="config-field checkbox">
+                <input type="checkbox" v-model="configForm.dataSources.circuitBreaker.enabled"><label>启用熔断</label>
+              </div>
+              <div class="config-field">
+                <label>失败阈值</label>
+                <input type="number" v-model.number="configForm.dataSources.circuitBreaker.failureThreshold">
+              </div>
+              <div class="config-field">
+                <label>冷却毫秒</label>
+                <input type="number" v-model.number="configForm.dataSources.circuitBreaker.cooldownMs">
+              </div>
+            </div>
+          </div>
+
+          <div class="config-group">
+            <div class="config-group-title">Web 面板</div>
+            <div class="config-fields">
+              <div class="config-field checkbox">
+                <input type="checkbox" v-model="configForm.web.enabled"><label>启用 Web</label>
+              </div>
+              <div class="config-field">
+                <label>监听地址</label>
+                <input v-model="configForm.web.host" placeholder="127.0.0.1">
+              </div>
+              <div class="config-field">
+                <label>端口</label>
+                <input type="number" v-model.number="configForm.web.port">
+              </div>
+            </div>
+          </div>
+
+          <div class="config-group">
+            <div class="config-group-title">历史存储</div>
+            <div class="config-fields">
+              <div class="config-field checkbox">
+                <input type="checkbox" v-model="configForm.historyStorage.enabled"><label>启用</label>
+              </div>
+              <div class="config-field checkbox">
+                <input type="checkbox" v-model="configForm.historyStorage.autoCompact"><label>周五自动整理</label>
+              </div>
+              <div class="config-field">
+                <label>备份保留天数</label>
+                <input type="number" v-model.number="configForm.historyStorage.backupRetentionDays">
+              </div>
+            </div>
+          </div>
+
+          <div class="config-actions">
+            <button class="btn-primary" :disabled="configSaving" @click="saveConfig">{{ configSaving ? '保存中...' : '保存配置' }}</button>
+            <span class="config-msg" :class="configMsgType" v-if="configMsg">{{ configMsg }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 </div>
 
 <script src="/vendor/vue.global.prod.js"></script>
 <script src="/vendor/echarts.min.js"></script>
 <script>
-const { createApp, ref, reactive, computed, onMounted, onUnmounted, nextTick } = Vue;
+const { createApp, ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } = Vue;
 
 createApp({
   setup() {
@@ -301,6 +573,8 @@ createApp({
       { id: 'overview', name: '概览' },
       { id: 'screener', name: '筛选' },
       { id: 'stock', name: '个股' },
+      { id: 'gold', name: '黄金' },
+      { id: 'config', name: '配置' },
     ];
     const statusText = ref('加载中');
     const statusType = ref('');
@@ -315,13 +589,264 @@ createApp({
     const stockName = ref('');
     const stockSeries = ref([]);
     const searched = ref(false);
+    const goldDays = ref(60);
+    const goldLoading = ref(false);
+    const goldSeries = reactive({ dates: [], goldPrice: [], stocks: [] });
+
+    // 筛选器状态
+    const filterBoard = ref('all');
+    const filterPrice = ref('all');
+    const filterWatched = ref(false);
+    // 关注列表持久化（服务端 data/watchlist.json，跨设备共享）
+    function loadWatched() {
+      return fetch('/api/watchlist').then((x) => x.json()).then((arr) => {
+        const list = Array.isArray(arr) ? arr : [];
+        return Object.fromEntries(list.map((c) => [c, true]));
+      }).catch(() => ({}));
+    }
+    const watched = reactive({});
+    const watchMsg = ref('');
+    function saveWatched() {
+      const codes = Object.keys(watched).filter((c) => watched[c]);
+      return fetch('/api/watchlist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codes }) })
+        .then((r) => { if (!r.ok) throw new Error('保存失败'); })
+        .catch((e) => { watchMsg.value = '关注列表保存失败，刷新页面恢复'; setTimeout(() => { watchMsg.value = ''; }, 3000); });
+    }
+    function toggleWatch(code) {
+      if (watched[code]) delete watched[code];
+      else watched[code] = true;
+      saveWatched();
+    }
+
+    // 配置管理（功能 B/C）
+    const configForm = reactive({
+      mode: 'both', intradayPointsText: '', closeTime: '19:00',
+      thresholds: { normal: 40, warning: 50 }, historyDays: 5,
+      maxRetries: 3, feishuMaxBytes: 20000,
+      feishu: { appId: '', appSecret: '', chatId: '', domain: 'feishu' },
+      etfWhitelistText: '', etfSurgeRatio: 2.5, marginUnit: '亿元',
+      screener: { ma20Source: 'auto', ma20Days: 20, concurrency: 4, cacheTtlMs: 600000 },
+      dataSources: { circuitBreaker: { enabled: true, failureThreshold: 3, cooldownMs: 300000 } },
+      web: { enabled: true, host: '127.0.0.1', port: 8787 },
+      historyStorage: { enabled: true, autoCompact: true, backupRetentionDays: 30 },
+    });
+    const configLoading = ref(false);
+    const configSaving = ref(false);
+    const configMsg = ref('');
+    const configMsgType = ref('');
+    const closeRunning = ref(false);
+    const closeMsg = ref('');
+    const closeMsgType = ref('');
+
+    function loadConfig() {
+      configLoading.value = true;
+      configMsg.value = '';
+      fetch('/api/config').then((x) => {
+        if (!x.ok) throw new Error('服务异常（' + x.status + '）');
+        return x.json();
+      }).then((data) => {
+        const c = data.config || {};
+        configForm.mode = c.mode || 'both';
+        configForm.intradayPointsText = (c.intradayPoints || []).join(',');
+        configForm.closeTime = c.closeTime || '19:00';
+        configForm.thresholds = { normal: c.thresholds?.normal ?? 40, warning: c.thresholds?.warning ?? 50 };
+        configForm.historyDays = c.historyDays ?? 5;
+        configForm.maxRetries = c.maxRetries ?? 3;
+        configForm.feishuMaxBytes = c.feishuMaxBytes ?? 20000;
+        configForm.feishu = {
+          appId: c.feishu?.appId || '', appSecret: c.feishu?.appSecret || '',
+          chatId: c.feishu?.chatId || '', domain: c.feishu?.domain || 'feishu',
+        };
+        configForm.etfWhitelistText = (c.etfWhitelist || []).join(',');
+        configForm.etfSurgeRatio = c.etfSurgeRatio ?? 2.5;
+        configForm.marginUnit = c.marginUnit || '亿元';
+        configForm.screener = {
+          ma20Source: c.screener?.ma20Source || 'auto', ma20Days: c.screener?.ma20Days ?? 20,
+          concurrency: c.screener?.concurrency ?? 4, cacheTtlMs: c.screener?.cacheTtlMs ?? 600000,
+        };
+        configForm.dataSources = {
+          circuitBreaker: {
+            enabled: c.dataSources?.circuitBreaker?.enabled ?? true,
+            failureThreshold: c.dataSources?.circuitBreaker?.failureThreshold ?? 3,
+            cooldownMs: c.dataSources?.circuitBreaker?.cooldownMs ?? 300000,
+          },
+        };
+        configForm.web = {
+          enabled: c.web?.enabled ?? true, host: c.web?.host || '127.0.0.1', port: c.web?.port ?? 8787,
+        };
+        configForm.historyStorage = {
+          enabled: c.historyStorage?.enabled ?? true, autoCompact: c.historyStorage?.autoCompact ?? true,
+          backupRetentionDays: c.historyStorage?.backupRetentionDays ?? 30,
+        };
+      }).catch((e) => {
+        configMsg.value = '加载失败：' + (e.message || e);
+        configMsgType.value = 'error';
+      }).finally(() => { configLoading.value = false; });
+    }
+
+    function saveConfig() {
+      configSaving.value = true;
+      configMsg.value = '';
+      const patch = {
+        mode: configForm.mode,
+        intradayPoints: configForm.intradayPointsText.split(',').map((s) => s.trim()).filter(Boolean),
+        closeTime: configForm.closeTime,
+        thresholds: { normal: Number(configForm.thresholds.normal), warning: Number(configForm.thresholds.warning) },
+        historyDays: Number(configForm.historyDays),
+        maxRetries: Number(configForm.maxRetries),
+        feishuMaxBytes: Number(configForm.feishuMaxBytes),
+        feishu: { ...configForm.feishu },
+        etfWhitelist: configForm.etfWhitelistText.split(',').map((s) => s.trim()).filter(Boolean),
+        etfSurgeRatio: Number(configForm.etfSurgeRatio),
+        marginUnit: configForm.marginUnit,
+        screener: { ...configForm.screener },
+        dataSources: { circuitBreaker: { ...configForm.dataSources.circuitBreaker } },
+        web: { ...configForm.web },
+        historyStorage: { ...configForm.historyStorage },
+      };
+      fetch('/api/config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      }).then((x) => {
+        if (!x.ok) return x.json().then((d) => { throw new Error(d.error || '保存失败（' + x.status + '）'); });
+        return x.json();
+      }).then((data) => {
+        if (data.ok) {
+          configMsg.value = data.message || '已保存，需重启服务生效';
+          configMsgType.value = 'ok';
+        } else {
+          configMsg.value = data.error || '保存失败';
+          configMsgType.value = 'error';
+        }
+      }).catch((e) => {
+        configMsg.value = e.message || '保存失败';
+        configMsgType.value = 'error';
+      }).finally(() => { configSaving.value = false; });
+    }
+
+    function triggerClose() {
+      if (!confirm('将触发完整收盘流程：抓全A行情→算指标→技术筛选→推送飞书→写历史，耗时约1-3分钟。确认执行？')) return;
+      closeRunning.value = true;
+      closeMsg.value = '';
+      fetch('/api/run-close', { method: 'POST' }).then((x) => {
+        if (!x.ok) return x.json().then((d) => { throw new Error(d.error || '触发失败'); });
+        return x.json();
+      }).then((data) => {
+        closeMsg.value = data.message || '已触发，请查看日志/飞书群';
+        closeMsgType.value = 'ok';
+      }).catch((e) => {
+        closeMsg.value = e.message || '触发失败';
+        closeMsgType.value = 'error';
+        closeRunning.value = false;
+      });
+      // runClose 耗时 1-3 分钟，按钮保持 loading 态 90 秒，期间防重复点击
+      setTimeout(() => { closeRunning.value = false; }, 90000);
+    }
+
+    const boardFilters = [
+      { value: 'all', label: '全部' },
+      { value: 'main', label: '主板' },
+      { value: 'cy', label: '创业板' },
+      { value: 'kcb', label: '科创板' },
+      { value: 'bjs', label: '北交所' },
+    ];
+    const priceFilters = [
+      { value: 'all', label: '全部' },
+      { value: 'lt20', label: '<20' },
+      { value: '20-50', label: '20-50' },
+      { value: '50-100', label: '50-100' },
+      { value: '100-300', label: '100-300' },
+      { value: '300-500', label: '300-500' },
+      { value: '500-1000', label: '500-1000' },
+      { value: '1000+', label: '1000+' },
+    ];
+
+    // 板块判定：按代码前缀，北交所独立号段
+    function boardOf(code) {
+      const c = String(code);
+      if (/^(43|83|87|92|920)/.test(c)) return 'bjs';
+      if (/^30/.test(c)) return 'cy';
+      if (/^68/.test(c)) return 'kcb';
+      return 'main'; // 60/00 等归主板
+    }
+    function boardLabel(code) {
+      const m = { main: '主板', cy: '创', kcb: '科', bjs: '北' };
+      return m[boardOf(code)] || '主板';
+    }
+    function boardTag(code) {
+      return boardOf(code);
+    }
+    function matchPrice(p, range) {
+      if (range === 'all') return true;
+      if (p == null) return false;
+      if (range === 'lt20') return p < 20;
+      if (range === '1000+') return p >= 1000;
+      const [lo, hi] = range.split('-').map(Number);
+      return p >= lo && p < hi;
+    }
+
+    function toggleBoard(v) { filterBoard.value = filterBoard.value === v ? 'all' : v; }
+    function togglePrice(v) { filterPrice.value = filterPrice.value === v ? 'all' : v; }
+    function resetFilter() {
+      filterBoard.value = 'all';
+      filterPrice.value = 'all';
+      filterWatched.value = false;
+    }
+    const hasFilter = computed(() => filterBoard.value !== 'all' || filterPrice.value !== 'all' || filterWatched.value);
+
+    const filteredItems = computed(() => {
+      return screen.items.filter((it) => {
+        if (filterBoard.value !== 'all' && it.boardClass !== filterBoard.value) return false;
+        if (!matchPrice(it.close, filterPrice.value)) return false;
+        if (filterWatched.value && !watched[it.code]) return false;
+        return true;
+      });
+    });
+
+    // 虚拟滚动：只渲染可视区行，避免 500+ 行 DOM 同时存在
+    const scroller = ref(null);
+    const scrollTop = ref(0);
+    const containerHeight = ref(0);
+    const itemHeight = 56;
+    const overscan = 5;
+    function updateContainerHeight() {
+      containerHeight.value = scroller.value ? scroller.value.clientHeight : 0;
+    }
+    let pendingScroll = false;
+    function onListScroll(e) {
+      if (pendingScroll) return;
+      pendingScroll = true;
+      requestAnimationFrame(() => {
+        scrollTop.value = e.target.scrollTop;
+        // 滚动时同步回写容器高度，避免初始化时 tab 隐藏导致 clientHeight 为 0
+        containerHeight.value = e.target.clientHeight || containerHeight.value;
+        pendingScroll = false;
+      });
+    }
+    const visibleRange = computed(() => {
+      const total = filteredItems.value.length;
+      if (!containerHeight.value) return { start: 0, end: Math.min(total, 20) };
+      const start = Math.max(0, Math.floor(scrollTop.value / itemHeight) - overscan);
+      const end = Math.min(total, Math.ceil((scrollTop.value + containerHeight.value) / itemHeight) + overscan);
+      return { start, end };
+    });
+    const visibleItems = computed(() => filteredItems.value.slice(visibleRange.value.start, visibleRange.value.end));
+    const topHeight = computed(() => visibleRange.value.start * itemHeight);
+    const bottomHeight = computed(() => (filteredItems.value.length - visibleRange.value.end) * itemHeight);
+    watch(filteredItems, () => {
+      scrollTop.value = 0;
+      if (scroller.value) scroller.value.scrollTop = 0;
+    });
 
     let histChart = null;
     let stockChart = null;
+    let goldChart = null;
+    let listResizeObserver = null;
 
     function resizeCharts() {
       histChart && histChart.resize();
       stockChart && stockChart.resize();
+      goldChart && goldChart.resize();
     }
 
     async function loadHist(days) {
@@ -364,7 +889,11 @@ createApp({
       screenLoading.value = true;
       try {
         const r = await fetch('/api/screener?upDays=3').then((x) => x.json());
-        Object.assign(screen, r);
+        const items = (r.items || []).map((it) => {
+          const b = boardOf(it.code);
+          return { ...it, board: boardLabel(it.code), boardClass: b };
+        });
+        Object.assign(screen, r, { items });
       } catch (e) {
         statusText.value = '筛选加载失败';
         statusType.value = 'error';
@@ -412,6 +941,46 @@ createApp({
       });
     }
 
+    async function loadGold(days) {
+      goldDays.value = days;
+      goldLoading.value = true;
+      try {
+        const r = await fetch('/api/gold/history?days=' + days).then((x) => x.json());
+        Object.assign(goldSeries, r);
+        await nextTick();
+        renderGold();
+      } catch (e) {
+        statusText.value = '黄金加载失败';
+        statusType.value = 'error';
+      } finally {
+        goldLoading.value = false;
+      }
+    }
+
+    function renderGold() {
+      const s = goldSeries;
+      if (s.dates.length === 0) return;
+      if (!goldChart) goldChart = echarts.init(document.getElementById('chart-gold'), null, { renderer: 'canvas' });
+      const stockSeriesList = s.stocks.map((st) => ({
+        name: st.name, type: 'line', yAxisIndex: 1, data: st.series,
+        showSymbol: false, lineStyle: { width: 1.5 }, emphasis: { disabled: true },
+      }));
+      goldChart.setOption({
+        tooltip: { trigger: 'axis', valueFormatter: (v) => (v == null ? '-' : String(v)) },
+        legend: { data: ['伦敦金', ...s.stocks.map((st) => st.name)], top: 0, itemWidth: 14, itemHeight: 8, textStyle: { fontSize: 11, color: '#5a6577' } },
+        grid: { left: 52, right: 52, top: 30, bottom: 24 },
+        xAxis: { type: 'category', data: s.dates.map((d) => d.slice(5)), boundaryGap: false, axisLine: { lineStyle: { color: '#d0d3d8' } }, axisLabel: { fontSize: 10, color: '#8a93a6' } },
+        yAxis: [
+          { type: 'value', name: '金价', position: 'left', scale: true, splitLine: { lineStyle: { color: '#f2f4f8' } }, axisLabel: { fontSize: 10, color: '#8a93a6' } },
+          { type: 'value', name: '股价', position: 'right', scale: true, splitLine: { show: false }, axisLabel: { fontSize: 10, color: '#8a93a6' } },
+        ],
+        series: [
+          { name: '伦敦金', type: 'line', yAxisIndex: 0, data: s.goldPrice, showSymbol: false, lineStyle: { width: 2.2 }, itemStyle: { color: '#e8a13a' }, emphasis: { disabled: true } },
+          ...stockSeriesList,
+        ],
+      });
+    }
+
     const lastDate = computed(() => hist.dates[hist.dates.length - 1] || '');
 
     const metricCards = computed(() => {
@@ -446,19 +1015,42 @@ createApp({
 
     function switchTab(id) {
       tab.value = id;
-      if (id === 'screener') loadScreener();
+      if (id === 'screener') {
+        loadScreener();
+        // 切到筛选页时容器才可见，重新测量高度
+        nextTick(updateContainerHeight);
+      }
+      if (id === 'config') loadConfig();
+      if (id === 'gold') loadGold(goldDays.value);
       setTimeout(resizeCharts, 50);
     }
 
-    function onResize() { resizeCharts(); }
+    function onResize() { resizeCharts(); updateContainerHeight(); }
 
     onMounted(() => {
       loadHist(60).then(loadScreener);
+      loadWatched().then((obj) => Object.assign(watched, obj));
       window.addEventListener('resize', onResize);
+      nextTick(() => {
+        updateContainerHeight();
+        // ResizeObserver 监听列表容器尺寸变化（切 tab、窗口缩放、地址栏显隐）
+        if (window.ResizeObserver && scroller.value) {
+          listResizeObserver = new ResizeObserver((entries) => {
+            containerHeight.value = entries[0].contentRect.height;
+          });
+          listResizeObserver.observe(scroller.value);
+        }
+      });
     });
-    onUnmounted(() => window.removeEventListener('resize', onResize));
+    onUnmounted(() => {
+      window.removeEventListener('resize', onResize);
+      if (listResizeObserver) {
+        listResizeObserver.disconnect();
+        listResizeObserver = null;
+      }
+    });
 
-    return { tab, tabs, statusText, statusType, loading, firstLoading, stockLoading, screenLoading, lastDate, histDays, hist, screen, stockCode, stockName, stockSeries, searched, metricCards, screenStatus, loadHist, loadScreener, loadStock, switchTab };
+    return { tab, tabs, statusText, statusType, loading, firstLoading, stockLoading, screenLoading, lastDate, histDays, hist, screen, stockCode, stockName, stockSeries, searched, goldDays, goldLoading, goldSeries, metricCards, screenStatus, loadHist, loadScreener, loadStock, loadGold, switchTab, filterBoard, filterPrice, filterWatched, watched, watchMsg, boardFilters, priceFilters, filteredItems, visibleItems, topHeight, bottomHeight, hasFilter, toggleBoard, togglePrice, resetFilter, toggleWatch, boardLabel, boardTag, onListScroll, configForm, configLoading, configSaving, configMsg, configMsgType, loadConfig, saveConfig, closeRunning, closeMsg, closeMsgType, triggerClose };
   },
 }).mount('#app');
 </script>

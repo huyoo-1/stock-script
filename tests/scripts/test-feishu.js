@@ -2,13 +2,13 @@
 // 早发现 appId/appSecret 错误、未入群(230002)、im:message 权限缺失。
 // 用法: npm run test:feishu
 const path = require('path');
-const { loadConfig } = require('../lib/config');
-const { createLogger } = require('../lib/log');
-const { createFeishuClient } = require('../lib/feishu');
+const { loadConfig } = require('../../lib/core/config');
+const { createLogger } = require('../../lib/core/log');
+const { createFeishuClient } = require('../../lib/view/feishu');
 
 async function main() {
-  const config = loadConfig(path.join(__dirname, '..', 'config.json'));
-  const logger = createLogger(path.join(__dirname, '..', 'logs'));
+  const config = loadConfig(path.join(__dirname, '..', '..', 'config.json'));
+  const logger = createLogger(path.join(__dirname, '..', '..', 'logs'));
   const feishu = createFeishuClient(config, logger);
   logger.info('发送飞书测试消息...');
   const ok = await feishu.sendTest();

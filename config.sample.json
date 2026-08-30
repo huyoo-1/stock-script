@@ -41,5 +41,13 @@
     "ma20Days": 20,
     "concurrency": 4,
     "cacheTtlMs": 600000
+  },
+  "goldStocks": ["600547", "601899", "600489", "002155", "600988", "518880", "159934"],
+  "dataSources": {
+    "circuitBreaker": {
+      "enabled": true,
+      "failureThreshold": 3,
+      "cooldownMs": 300000
+    }
   }
 }

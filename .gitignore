@@ -5,11 +5,7 @@ config.json
 node_modules/
 
 # 运行时数据与日志
-data/history.json
-data/intraday.json
-data/history/
-data/history_backup
-data/price_history/
+data/
 logs/
 *.log
 *.log.1
@@ -20,3 +16,5 @@ Thumbs.db
 config.json
 .idea/
 .vscode/
+.playwright-mcp
+.mcp.json

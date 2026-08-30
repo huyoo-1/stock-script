@@ -2,7 +2,7 @@
 // 用法: node --test tests/screener.test.js
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { ma, consecutiveUp, runScreener, applyMa20Filter, readyDays, MA10_DAYS, MA20_DAYS } = require('../lib/screener');
+const { ma, consecutiveUp, runScreener, applyMa20Filter, readyDays, MA10_DAYS, MA20_DAYS } = require('../../lib/algo/screener');
 
 // 造 daysData：每只股票的收盘价序列
 function makeDaysData(stocks, dates) {

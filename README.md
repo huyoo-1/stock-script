@@ -74,4 +74,4 @@ nssm start AStockCrowdMonitor
 
 ## 最近改动
 
-看 [CHANGELOG.md](./CHANGELOG.md)。
+看 [docs/CHANGELOG.md](./docs/CHANGELOG.md)。

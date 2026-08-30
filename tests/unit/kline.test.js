@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const {
   toSecid, meanOfLast, parseTencentKline, parseSinaKline,
   createMa20Provider, clearKlineCache,
-} = require('../lib/kline');
+} = require('../../lib/kline');
 
 beforeEach(() => clearKlineCache());
 
@@ -72,17 +72,27 @@ describe('parseSinaKline', () => {
 });
 
 describe('createMa20Provider', () => {
+  // 造一个返回固定 rows 的 fake fetcherMgr，绕开真实抓取，专注测 MA20 计算 + 缓存
+  function fakeMgr(rows) {
+    return {
+      execute: async () => ({ result: rows, source: 'fake' }),
+    };
+  }
+  // 从腾讯 payload 派生 rows（复用 parseTencentKline）
+  function rowsFromPayload(secid, count) {
+    return parseTencentKline(tencentPayload(secid, count), secid);
+  }
+
+  beforeEach(() => clearKlineCache());
+
   it('腾讯日K算出 MA20 并缓存', async () => {
     let calls = 0;
-    const http = {
-      get: async () => {
-        calls++;
-        return tencentPayload('sh600000', 25);
-      },
-    };
+    const rows = rowsFromPayload('sh600000', 25);
+    const mgr = { execute: async () => { calls++; return { result: rows, source: 'fake' }; } };
     const provider = createMa20Provider({
-      http,
+      http: {},
       config: { screener: { ma20Source: 'tencent', ma20Days: 20, cacheTtlMs: 60000 } },
+      fetcherMgr: mgr,
     });
     assert.equal(provider.enabled, true);
     assert.equal(await provider.fetch('600000'), 15.5);
@@ -91,10 +101,11 @@ describe('createMa20Provider', () => {
   });
 
   it('日K样本不足返回 null', async () => {
-    const http = { get: async () => tencentPayload('sh600000', 10) };
+    const rows = rowsFromPayload('sh600000', 10);
     const provider = createMa20Provider({
-      http,
+      http: {},
       config: { screener: { ma20Source: 'tencent', ma20Days: 20 } },
+      fetcherMgr: fakeMgr(rows),
     });
     assert.equal(await provider.fetch('600000'), null);
   });

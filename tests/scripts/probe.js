@@ -1,11 +1,28 @@
-// 契约核实脚本：打印原始 API 响应，核实三个未核实契约 + ETF/指数 secid。
-// 用法: node tests/probe.js [all|breadth|constituents|margin|etf|index]
+// 契约核实脚本：打印原始 API 响应，核实数据源字段 + ETF/指数 secid。
+// 用法: node tests/scripts/probe.js [all|breadth|constituents|margin|etf|index]
 const path = require('path');
-const { createHttpClient } = require('../lib/http');
-const em = require('../lib/emData');
+const { loadConfig } = require('../../lib/core/config');
+const { createHttpClient } = require('../../lib/core/http');
+const { CircuitBreaker } = require('../../lib/data/breakers');
+const { FetcherManager } = require('../../lib/data/manager');
+const { SinaAllAFetcher, EmAllAFetcher } = require('../../lib/data/allA');
+const { SinaIndexFetcher, EmIndexFetcher, SinaEtfFetcher, EmEtfFetcher } = require('../../lib/data/indexQuote');
+const { EmMarginFetcher, ExchangeMarginFetcher } = require('../../lib/data/margin');
+const em = require('../../lib/emData');
 
 const TARGET = process.argv[2] || 'all';
+const cfg = loadConfig(path.join(__dirname, '..', '..', 'config.json'));
 const http = createHttpClient({ maxRetries: 1, logger: { info: () => {}, warn: () => {}, error: (m, e) => console.error(m, e) } });
+const cb = new CircuitBreaker();
+const mgr = new FetcherManager({ circuitBreaker: cb, logger: { info: () => {}, warn: () => {}, error: (m, e) => console.error(m, e) } });
+mgr.addFetcher(new SinaAllAFetcher());
+mgr.addFetcher(new EmAllAFetcher());
+mgr.addFetcher(new SinaIndexFetcher());
+mgr.addFetcher(new EmIndexFetcher());
+mgr.addFetcher(new SinaEtfFetcher());
+mgr.addFetcher(new EmEtfFetcher());
+mgr.addFetcher(new EmMarginFetcher());
+mgr.addFetcher(new ExchangeMarginFetcher());
 
 function header(t) {
   console.log(`\n========== ${t} ==========`);
@@ -14,10 +31,12 @@ function header(t) {
 async function probeBreadth() {
   header('全 A 股 spot（广度）');
   try {
-    const rows = await em.fetchAllAShares(http);
-    console.log(`行数: ${rows.length}`);
-    console.log('样本(前3):', JSON.stringify(rows.slice(0, 3), null, 2));
-    const total = rows.reduce((s, r) => s + (r.amount || 0), 0);
+    const { result, source } = await mgr.execute(http, {}, { capability: 'allA', validate: (rows) => rows.length >= 3000 });
+    console.log(`数据源: ${source}`);
+    if (!result) { console.log('无数据'); return; }
+    console.log(`行数: ${result.length}`);
+    console.log('样本(前3):', JSON.stringify(result.slice(0, 3), null, 2));
+    const total = result.reduce((s, r) => s + (r.amount || 0), 0);
     console.log(`两市成交额合计: ${(total / 1e8).toFixed(2)} 亿元`);
   } catch (e) {
     console.error('失败:', e.message);
@@ -25,31 +44,26 @@ async function probeBreadth() {
 }
 
 async function probeConstituents() {
-  header('指数成分股（派生 + 三级降级）');
-  // 先拉一次全 A，成分股优先从同一批数据派生（同源，减少新浪重复翻页）
+  header('指数成分股（从全A派生）');
   let allShares = null;
   try {
-    allShares = await em.fetchAllAShares(http);
+    const { result } = await mgr.execute(http, {}, { capability: 'allA', validate: (rows) => rows.length >= 3000 });
+    allShares = result;
     console.log(`全A: ${allShares.length} 只`);
   } catch (e) {
     console.error('全A拉取失败:', e.message);
   }
+  if (!allShares) return;
   for (const code of ['000001', '399006']) {
     console.log(`\n--- ${code} ---`);
-    try {
-      const { rows, source } = await em.fetchIndexConstituents(http, code, allShares);
-      console.log(`结果: source=${source}, ${rows.length} 行`);
-      if (rows.length > 0) {
-        console.log('样本:', JSON.stringify(rows.slice(0, 3), null, 2));
-      }
-    } catch (e) {
-      console.log(`失败: ${e.message}`);
-    }
+    const rows = em.deriveConstituents(allShares, code);
+    console.log(`派生成分股: ${rows.length} 行`);
+    if (rows.length > 0) console.log('样本:', JSON.stringify(rows.slice(0, 3), null, 2));
   }
 }
 
 async function probeMargin() {
-  header('融资融券（风险 #2）');
+  header('融资融券');
   try {
     const raw = await http.get(em.EM_DATACENTER_URL, {
       params: {
@@ -75,8 +89,8 @@ async function probeEtf() {
   header('宽基 ETF 成交额');
   for (const code of ['510300', '510050', '510500', '510310', '159915']) {
     try {
-      const q = await em.fetchEtfQuote(http, code);
-      console.log(`${code}: ${q ? JSON.stringify(q) : '无数据'}`);
+      const { result } = await mgr.execute(http, { code }, { capability: 'etfQuote' });
+      console.log(`${code}: ${result ? JSON.stringify(result) : '无数据'}`);
     } catch (e) {
       console.log(`${code} 失败: ${e.message}`);
     }
@@ -91,8 +105,8 @@ async function probeIndex() {
   ];
   for (const { code, exchange, name } of list) {
     try {
-      const q = await em.fetchIndexQuote(http, code, exchange);
-      console.log(`${name}(${code}): ${q ? JSON.stringify(q) : '无数据'}`);
+      const { result } = await mgr.execute(http, { code, exchange }, { capability: 'indexQuote' });
+      console.log(`${name}(${code}): ${result ? JSON.stringify(result) : '无数据'}`);
     } catch (e) {
       console.log(`${name}(${code}) 失败: ${e.message}`);
     }
