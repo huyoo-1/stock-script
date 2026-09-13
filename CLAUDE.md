@@ -26,20 +26,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 2.常用命令
 
 ```bash
-npm install            # 安装依赖（axios + @larksuiteoapi/node-sdk）
-npm start              # 启动常驻监控服务（盘中定时 + 19:00 收盘汇总）
+npm install            # 安装依赖（运行时 axios + @larksuiteoapi/node-sdk，构建依赖 vite/vue/element-plus 等）
+npm start              # 启动常驻监控服务（盘中定时 + 19:00 收盘汇总；prestart 在 dist 缺失时自动构建前端，失败不阻断后端）
 npm run once           # 跑一次盘中流程后退出（调试用）
+npm run dev            # 开发模式：concurrently 同时起 Vite(8089 起，被占自动递增) + Node(API)，代理目标从 config.json 读
+npm run build          # 构建前端 web/src → web/dist
 npm run probe          # 接口契约探针，打印原始响应核实数据源字段
 npm run test:feishu    # 飞书凭证自检，发测试卡片验证 appId/appSecret/入群/权限
-node tests/run_close_once.js   # 手动跑一次完整收盘流程（抓取→推送→写历史）
+node tests/scripts/run_close_once.js   # 手动跑一次完整收盘流程（抓取→推送→写历史）
 ```
+
+Windows 也可双击 `run.bat` 一键启动（检查依赖与 config.json → 打印本机/局域网访问地址 → npm start）。
 
 测试用 Node 内置 `node:test`，直接运行单测：
 
 ```bash
-node tests/breadth.test.js   # 市场广度算法（涨跌停判定 / 广度统计）
-node tests/crowd.test.js     # 拥挤度算法（前 5% 集中度 / level / delta）
-node tests/screener.test.js  # 技术筛选算法（MA / 连续上涨 / 筛选）
+node tests/unit/breadth.test.js   # 市场广度算法（涨跌停判定 / 广度统计）
+node tests/unit/crowd.test.js     # 拥挤度算法（前 5% 集中度 / level / delta）
+node tests/unit/screener.test.js  # 技术筛选算法（MA / 连续上涨 / 筛选）
 ```
 
 ## 3.项目架构
@@ -51,7 +55,7 @@ A 股大盘拥挤度监控：Node.js 22 常驻服务，盘中定时计算上证�
 - `axios`（数据拉取 + 反爬重试）、`@larksuiteoapi/node-sdk`（飞书 App Bot 推送）
 - `https-proxy-agent`（可选，需代理时装）
 - JSON 文件存储、进程内定时器调度（无 cron）
-- Web 面板：单文件 HTML + Vue 3（global build）+ ECharts，零构建
+- Web 面板：Vite + Vue 3 SFC 工程（`web/src/`）+ Element Plus，构建产物 `web/dist/` 由 Node 伺服；ECharts 暂用本地 vendor 全局加载
 
 ### 入口与生命周期
 - [service.js](service.js)：bootstrap 入口。loadConfig → createLogger → createHttpClient → createFeishuClient → `feishu.sendTest()` → createScheduler → start。支持 `--once` 跑一次盘中流程退出。信号 SIGINT/SIGTERM 优雅关闭；uncaughtException/unhandledRejection 记错不退出。
@@ -84,13 +88,13 @@ A 股大盘拥挤度监控：Node.js 22 常驻服务，盘中定时计算上证�
 - **收盘汇总**（19:00）：上述 + FetcherManager(`margin`/`etfQuote`) → 算全指标 → 读近 30 收盘 + prevClose → 建卡（含融资表/ETF 表/30 日表）→ 推送 → 写收盘记录
 
 ### Web 面板
-[web/index.html](web/index.html) 单文件 Vue 3 + ECharts 应用，四个 tab：概览（拥挤度历史曲线）、筛选（技术筛选命中，支持板块/价格/关注三维前端筛选，关注列表服务端存储跨设备同步）、个股（收盘价 + MA5/MA10）、配置（在线编辑 config.json + 手动触发收盘汇总）。后端 [view/web.js](lib/view/web.js) 提供 API：
+[web/](web/) 是 Vite + Vue 3 SFC 工程（`web/src/` 按 tab 拆分视图组件与 composables，UI 用 Element Plus），`npm run build` 产出 `web/dist/` 由后端伺服。五个 tab：概览（拥挤度历史曲线 + 当日盘中轨迹）、筛选（技术筛选命中，支持板块/价格/关注三维前端筛选，关注列表服务端存储跨设备同步）、个股（收盘价 + MA5/MA10）、黄金（金价与黄金股走势）、配置（在线编辑 config.json 全量字段 + 手动触发收盘汇总）。后端 [view/web.js](lib/view/web.js) 提供 API：
 - `GET /api/indices/history?days=60` → `{dates, sh, cy}`
-- `GET /api/intraday?date=today` → 当日盘中快照轨迹
+- `GET /api/intraday?date=today` → 当日盘中快照轨迹（当日无数据时回退最近有数据的交易日）
 - `GET /api/stock/{code}?days=60` → `{code, name, days, series}`（series 含 close/ma5/ma10）
 - `GET /api/screener?upDays=3` → `{count, readyDays, neededDays, updatedAt, items}`（优先读收盘落盘，无缓存时回退实时计算）
 - `GET|POST /api/watchlist` → 关注列表（纯代码数组，服务端 `data/watchlist.json`，跨设备同步）
-- `GET|POST /api/config` → 配置读写（GET 时 appSecret 脱敏为 `***`，POST 深合并写回 config.json，保存后需重启生效）
+- `GET|POST /api/config` → 配置读写（GET 时 appSecret 脱敏为 `***`，POST 深合并写回 config.json，校验失败返回 errors 数组，保存后需重启生效）
 - `POST /api/run-close` → 手动触发完整收盘流程（防重入，异步执行，立即返回 202）
 
 ### 数据与存储

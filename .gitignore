@@ -4,6 +4,10 @@ config.json
 # 依赖
 node_modules/
 
+# Web 构建产物（npm run build 生成，不入库）
+web/dist/
+web/.vite/
+
 # 运行时数据与日志
 data/
 logs/

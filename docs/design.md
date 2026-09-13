@@ -256,7 +256,7 @@ Node 常驻服务（service.js，开机自启 + 崩溃自动拉起）
     ┌──────────────┐     ┌────────────────┐
     │  飞书消息推送  │     │   Web 面板      │
     └──────────────┘     └────────────────┘
-     盘中/收盘/告警卡片      Vue 3 + ECharts，默认 127.0.0.1:8787
+     盘中/收盘/告警卡片      Vite + Vue 3 SFC，默认 127.0.0.1:8787
 ```
 
 核心数据流：
@@ -277,6 +277,9 @@ stock-script/
 ├── config.json                # 运行配置（飞书、指数、阈值、模式、快照点、存储）
 ├── config.sample.json         # 配置模板
 ├── service.js                 # 常驻服务入口：bootstrap + 数据源注册 + 调度 + Web 面板
+├── run.bat                    # Windows 一键启动（检查依赖/config + 打印访问地址 + npm start）
+├── scripts/
+│   └── start-info.js          # 启动前信息：读 config.web 端口 + 检测局域网 IPv4，输出访问 URL
 ├── lib/
 │   ├── core/                  # 基础设施
 │   │   ├── config.js          # 配置加载与校验（fail-fast）
@@ -323,8 +326,17 @@ stock-script/
 │       ├── run_close_once.js  # 手动跑一次完整收盘流程
 │       └── trial_ma20.js      # 本地快照试跑 MA20 精筛
 ├── web/
-│   ├── index.html             # Web 面板：单文件 Vue 3 + ECharts
-│   └── vendor/                # 本地 Vue / ECharts 静态资源
+│   ├── index.html             # Vite 入口
+│   ├── vite.config.mjs        # Vite 配置（dev 代理 /api 到 Node，目标从 config.json 读）
+│   ├── src/                   # Vue 3 SFC 工程
+│   │   ├── main.js           # createApp 入口
+│   │   ├── App.vue           # 外壳：Sidebar/Topbar/Tabbar + 共享状态
+│   │   ├── styles/tokens.css # 设计 token + 全局 reset + 布局 CSS
+│   │   ├── views/            # 五个 tab 视图组件
+│   │   ├── components/        # Sidebar/Topbar/Tabbar
+│   │   └── composables/      # useChart/useApi/useScreenerFilter/useWatchlist/useScreener
+│   ├── dist/                  # 构建产物（gitignore），生产由 Node 伺服
+│   └── vendor/                # 本地 ECharts 静态资源（阶段一）
 ├── data/
 │   ├── holidays.json          # 节假日数据
 │   ├── history/               # 按年份分文件的历史数据（如 2026.json）
@@ -352,7 +364,8 @@ stock-script/
 | 定时调度     | 进程内部定时器                      | 常驻服务自管调度，不依赖外部 cron                      |
 | 飞书推送     | `@larksuiteoapi/node-sdk`    | 官方 SDK，App Bot 模式，token 自动管理，支持卡片/图片/附件   |
 | 反爬代理（可选） | `https-proxy-agent`          | 需走代理时用；默认不启用                             |
-| 前端图表   | ECharts（本地 vendor）        | Web 面板零 npm 依赖，直接引用本地 `web/vendor/echarts.min.js` |
+| 前端图表   | ECharts（本地 vendor）        | Web 面板用 Vite + Vue 3 SFC 工程，构建产物由 Node 伺服；ECharts 阶段一仍用本地 `web/vendor/echarts.min.js`，阶段二迁 npm import |
+| 前端构建   | Vite + Vue 3 SFC              | `npm run dev` 同时起 Vite(8089 起，被占自动递增)+Node；`npm run build` 构建 `web/dist/`；`prestart` 钩子自动构建（失败不阻断后端） |
 
 **原则**：按需引入 npm 依赖，控制依赖数量与质量（优先官方/高维护度包），不为"零依赖"牺牲功能可维护性。核心依赖仅 `axios` + `@larksuiteoapi/node-sdk`，均为官方/主流包；其余能力（定时、JSON 存储、HMAC）仍用 Node 内置模块。
 
@@ -368,8 +381,16 @@ stock-script/
     "https-proxy-agent": "^7.0.0"
   },
   "devDependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
     "@playwright/mcp": "^0.0.79",
-    "@playwright/test": "^1.62.1"
+    "@playwright/test": "^1.62.1",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "concurrently": "^8.2.2",
+    "element-plus": "^2.14.5",
+    "unplugin-auto-import": "^21.1.0",
+    "unplugin-vue-components": "^32.1.0",
+    "vite": "^5.0.0",
+    "vue": "^3.4.0"
   }
 }
 ```
@@ -377,7 +398,10 @@ stock-script/
 - `axios`：数据拉取（东财/新浪行情、融资融券、ETF）+ 反爬重试/超时；
 - `@larksuiteoapi/node-sdk`：飞书 App Bot 推送（卡片、图片、文件）；
 - `https-proxy-agent`（可选）：仅当部署环境需走代理访问飞书/数据源时装，默认不装；
-- `@playwright/test` / `@playwright/mcp`：浏览器自动化测试与 MCP 工具（开发依赖，运行时不需要）。
+- `@playwright/test` / `@playwright/mcp`：浏览器自动化测试与 MCP 工具（开发依赖，运行时不需要）；
+- `vite` / `@vitejs/plugin-vue` / `vue`：Web 面板 SFC 工程构建（`npm run build` 产出 `web/dist/`；运行期 `prestart` 在 dist 缺失且 vite 可用时自动构建，vite 未装或构建失败只提示不阻断后端）；
+- `element-plus` / `@element-plus/icons-vue`：Web 面板 UI 组件库 + 图标组件，JS 组件经 `unplugin-vue-components` / `unplugin-auto-import` 按需自动导入，EP CSS 与图标为全量导入（开发依赖，运行时不需要）；
+- `concurrently`：开发时同时起 Vite + Node（`npm run dev`，开发依赖，运行时不需要）。
 
 ***
 
@@ -778,13 +802,13 @@ const imageKey = uploadRes.data.image_key;
 
 ### 11.8 Web 面板
 
-Web 面板是一个零 npm 依赖的单文件应用（`web/index.html`：Vue 3 global build + ECharts），由 `lib/view/web.js` 通过 `node:http` 伺服，默认监听 `127.0.0.1:8787`。五个 tab：
+Web 面板是 Vite + Vue 3 SFC 工程（`web/src/`），构建产物 `web/dist/` 由 `lib/view/web.js` 通过 `node:http` 伺服，默认监听 `127.0.0.1:8787`。UI 组件库用 Element Plus + @element-plus/icons-vue，配合 `unplugin-vue-components` / `unplugin-auto-import` 按 `ElementPlusResolver` 自动按需导入（SFC 里写 `<el-button>` 等无需手动 import），`main.js` 全量导入 EP CSS + 全局注册所有图标组件；外壳菜单/按钮/输入/选择/标签/卡片/表单/消息框均用 el-* 组件，emoji 图标换成 `<el-icon>` 图标组件，`tokens.css` 只保留布局/主题 token/图表高度/设备媒体查询，被 EP 替代的组件 CSS 已删除。按 tab 拆分为独立视图组件与 composables：`App.vue` 持有外壳（Sidebar/Topbar/Tabbar）与共享状态（tab/status/hist/screen），五个视图组件（`views/OverviewView.vue` 等）各自负责数据加载与图表渲染，公共逻辑抽到 `composables/`（`useChart` ECharts 生命周期、`useApi` fetch 封装、`useScreenerFilter` 三维筛选+虚拟滚动、`useWatchlist` 关注列表、`useScreener` 筛选数据加载）。ECharts 阶段一仍用本地 `web/vendor/echarts.min.js` 全局加载（阶段二迁 npm import）。布局按设备类型自适应：真桌面（`hover:hover` + `pointer:fine`，有鼠标+精确指针）显示左侧固定侧栏 + 顶栏 + 内容区三栏；触屏设备（iPhone/iPad/Android，`hover:none` 或 `pointer:coarse`）隐藏侧栏改底部 tabbar，任何宽度都走触屏布局（避免 iPad 横屏 1366px 误判为桌面）。五个 tab：
 
-- **概览**：指标卡 + 上证/创业板拥挤度历史曲线（30/60/120 日）+ 当日盘中轨迹。
-- **筛选**：技术筛选命中列表，支持板块 / 价格区间 / 已关注三维前端筛选；列表采用虚拟滚动，只渲染可视区行；关注列表存服务端 `data/watchlist.json`，跨设备同步。
-- **个股**：输入 6 位代码查询收盘价 + MA5/MA10 走势图。
+- **概览**：指标卡 + 上证/创业板拥挤度历史曲线（30/60/120 日）+ 当日盘中轨迹（桌面端双列并排，触屏堆叠）。
+- **筛选**：技术筛选命中列表，支持板块 / 价格区间 / 已关注三维前端筛选（板块/价格用 `el-radio-group`，关注用 `el-checkbox`）；列表采用手写虚拟滚动（itemHeight 72，row 纵向堆叠布局，`useScreenerFilter.js` 逻辑保留），只渲染可视区行，行内 ★关注按钮/板块标签换 `el-button`/`el-tag`；关注列表存服务端 `data/watchlist.json`，跨设备同步。
+- **个股**：输入 6 位代码查询收盘价 + MA5/MA10 走势图，最近查询记录存 localStorage。
 - **黄金**：伦敦金现货（美元/盎司）叠加黄金股/ETF 收盘价的双 Y 轴走势图（30/60/120 日）。
-- **配置**：在线编辑 `config.json`（`appSecret` 脱敏显示为 `***`），保存后提示需重启服务生效；支持手动触发完整收盘流程（二次确认、防重入、非交易日拒绝）。
+- **配置**：在线编辑 `config.json` 全量字段，表单按 `el-collapse` 分 6 组（基础/飞书/筛选/熔断/Web/历史），输入用 `el-input`/`el-select`/`el-input-number`/`el-checkbox`（`appSecret` 脱敏显示为 `***`，不改保存时后端自动还原原值）；校验失败时后端返回 errors 数组，前端用 `el-alert` 渲染为多行列表逐条展示；保存后提示需重启服务生效；支持手动触发完整收盘流程（`ElMessageBox.confirm` 二次确认、防重入、非交易日拒绝）。
 
 后端 API：
 
@@ -796,6 +820,12 @@ Web 面板是一个零 npm 依赖的单文件应用（`web/index.html`：Vue 3 g
 - `GET|POST /api/watchlist`：关注列表读写。
 - `GET|POST /api/config`：配置读写（GET 脱敏 appSecret）。
 - `POST /api/run-close`：手动触发收盘汇总，异步执行，立即返回 202。
+
+开发与构建工作流：
+
+- **开发**：`npm run dev` 用 `concurrently` 同时起 Vite（8089 起，被占时自动递增，HMR）+ Node（API），Vite 代理 `/api` 与 `/vendor` 到 Node（代理目标从 `config.json` 的 `web.host`/`web.port` 读，不写死），前端访问启动日志里打印的 `Local:` 地址。
+- **构建**：`npm run build` 用 Vite 构建 `web/src/` → `web/dist/`（hash 资源在 `dist/assets/`）。
+- **生产**：`npm start` 单进程伺服 API + 构建产物；`prestart` 钩子（`scripts/prestart-build.js`）在 `web/dist/index.html` 不存在且 vite 可用时自动触发构建，vite 未安装或构建失败时只打印提示、**不阻断后端启动**（面板回落 503 提示页），保证常驻监控的稳定性优先。`serveStatic` 伺服 `web/dist`，新增 `.mjs`/`.woff2` 等 MIME、SPA fallback（无扩展名路径回退 index.html）、dist 缺失时返回 503 提示页。`web/dist/` 与 `web/.vite/` 已 gitignore。
 
 ### 11.9 黄金走势
 
@@ -824,6 +854,19 @@ node service.js
 ```
 
 后台常驻运行需配合下文开机自启方案，并将 stdout/stderr 重定向到 `logs/index.log`（或 `logDir` 指定路径）。
+
+### 12.2.1 一键启动（run.bat）
+
+Windows 下双击仓库根目录的 `run.bat` 即可一键启动，免去手动敲命令。脚本流程：
+
+1. 检测 `node_modules` 缺失时自动 `npm install`；
+2. 校验 `config.json` 存在（缺失则提示从 `config.sample.json` 复制并退出）；
+3. 调用 `scripts/start-info.js` 在控制台打印访问地址；
+4. 执行 `npm start`（触发 `prestart` 钩子，`web/dist` 不存在时自动构建前端，再 `node service.js`）。
+
+`scripts/start-info.js` 直接 `JSON.parse` 读 `config.json` 的 `web.host`/`web.port`（不走 `loadConfig`，避免飞书凭证未填时 fail-fast），用 `os.networkInterfaces()` 取本机非回环 IPv4，输出本机与局域网访问地址。当 `web.host=127.0.0.1` 时额外提示：局域网访问需将 `web.host` 改为 `0.0.0.0` 后重启（开放公网有安全风险）。
+
+> `run.bat` 本身只含 ASCII 注释与命令，中文提示统一由 `start-info.js` 输出，避免 bat 在 `chcp 65001` 下的中文编码问题。
 
 ### 12.3 开机自启方案（二选一）
 
@@ -932,7 +975,8 @@ nssm start AStockCrowdMonitor
 - [x] 反爬策略（随机 UA + 请求间隔 + 指数退避 + 多源故障转移 + 456 快速失败，基于 axios）已确认
 - [x] 数据源策略模式（FetcherManager + BaseFetcher + CircuitBreaker）已确认
 - [x] 技术筛选两级过滤（本地 MA5/MA10 粗筛 + 日 K MA20 精筛）已确认
-- [x] Web 面板（Vue 3 + ECharts，概览/筛选/个股/黄金/配置五 tab）已确认
+- [x] Web 面板（Vite + Vue 3 SFC，概览/筛选/个股/黄金/配置五 tab）已确认
+- [x] Web 面板 UI 组件库用 Element Plus + @element-plus/icons-vue（unplugin 组件按需自动导入，CSS/图标全量）已确认
 - [x] 黄金走势（伦敦金现货 + 黄金股/ETF 双 Y 轴叠加）已确认
 - [x] 关注列表服务端存储与跨设备同步已确认
 - [x] Web 配置在线编辑与手动触发收盘汇总已确认

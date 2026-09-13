@@ -1,6 +1,6 @@
 {
   "name": "astock-crowd-monitor",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "A 股大盘拥挤度监控（拥挤度 + 市场广度 + 融资融券 + 国家队 ETF 代理），飞书推送",
   "main": "service.js",
@@ -9,7 +9,12 @@
     "once": "node service.js --once",
     "probe": "node tests/scripts/probe.js",
     "test:feishu": "node tests/scripts/test-feishu.js",
-    "test": "node --test tests/unit/breadth.test.js tests/unit/crowd.test.js tests/unit/fetcher.test.js tests/unit/kline.test.js tests/unit/screener.test.js"
+    "test": "node --test tests/unit/breadth.test.js tests/unit/crowd.test.js tests/unit/fetcher.test.js tests/unit/kline.test.js tests/unit/screener.test.js",
+    "dev": "concurrently -k -n web,api -c blue,green \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "vite --config web/vite.config.mjs",
+    "dev:api": "node service.js",
+    "build": "vite build --config web/vite.config.mjs",
+    "prestart": "node scripts/prestart-build.js"
   },
   "dependencies": {
     "@larksuiteoapi/node-sdk": "^1.71.0",
@@ -22,7 +27,15 @@
     "node": ">=22"
   },
   "devDependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
     "@playwright/mcp": "^0.0.79",
-    "@playwright/test": "^1.62.1"
+    "@playwright/test": "^1.62.1",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "concurrently": "^8.2.2",
+    "element-plus": "^2.14.5",
+    "unplugin-auto-import": "^21.1.0",
+    "unplugin-vue-components": "^32.1.0",
+    "vite": "^5.0.0",
+    "vue": "^3.4.0"
   }
 }
