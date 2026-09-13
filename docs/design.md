@@ -108,13 +108,16 @@
 
 ### 4.1 主数据源
 
+数据抓取通过 `lib/data/manager.js` 的 `FetcherManager` 按 capability 统一路由，各源按优先级自动 failover（详见 §11.1）。
+
 - **新浪财经**：当前网络下最稳定，作为行情主源。
   - 全 A 分页接口 `vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData`（一次抓全 A 约 70 页 / 5500+ 只），指数/ETF 行情走 `hq.sinajs.cn` 单请求；
   - **成分股与全 A 同源**：成分股从同一批全 A 数据按市场 + 代码前缀派生，避免拥挤度分子分母口径不一致（见 §2.3）；
-- **东方财富（EM）**：作为备选。
+- **东方财富（EM）**：作为行情备选；融资融券主源。
   - `datacenter-web.eastmoney.com`（reportName=`RPTA_WEB_MARGIN_DAILYTRADE`，直出沪深合计余额）——**融资融券主源**，实测可用；
-  - `push2.eastmoney.com` 行情接口（clist/get 全 A 大包、stock/get 指数/ETF）——当前网络下必 `socket hang up`，仅作新浪失败时的兜底（指数/ETF 行情已改为新浪优先，`maxRetries: 1`）；
-- 接口形式：HTTP JSON 接口，通过 `axios` 请求（见 §8 技术选型）。
+  - `push2.eastmoney.com` 行情接口（clist/get 全 A 大包、stock/get 指数/ETF）——当前网络下必 `socket hang up`，仅作新浪失败时的兜底；
+- **腾讯财经**：日 K 数据源，作为 MA20 精筛主源（`web.ifzq.gtimg.cn`），新浪日 K 兜底。
+- 接口形式：HTTP JSON / JSONP 接口，通过 `axios` 请求（见 §8 技术选型）。
 
 ### 4.2 备选数据源
 
@@ -130,7 +133,8 @@
 
 - 优先使用新浪财经（当前网络稳定），免费且覆盖全 A、指数/ETF、B 股行情；
 - 融资融券优先东财 `datacenter`，失败时降级上交所 + 深交所官方接口交叉校验（注意沪市单位为元、深市为亿元，合计前统一换算；深交所字段待核实，解析不到时标记缺失而非按 0 计算）；
-- 在代码中预留数据源切换接口（`lib/emData.js`），便于后续替换；
+- 日 K 优先腾讯，腾讯被 WAF 封禁时自动降级新浪；
+- 数据源切换通过 `lib/data/manager.js` 的 `FetcherManager` 配置化完成，新增源只需实现 `BaseFetcher` 并注册到 `service.js`；
 - 所有源均失败时，推送"数据异常"告警卡，当日该指标标记为缺失，不推送全 0 假数据。
 
 ### 4.4 国家队 ETF 数据可得性说明
@@ -153,11 +157,12 @@
 | 随机 User-Agent | 每次请求从 UA 池随机取一个，避免固定 UA 被识别；UA 池内置常量，无需依赖                  |
 | 随机 Referer / Cookie | 新浪请求自动带随机 `Referer`（多个财经页面）与随机 `Cookie`，降低被识别为脚本的概率 |
 | 指数退避重试 + 封禁快速失败 | 普通失败按 1s/3s/8s 退避重试 `maxRetries` 次，退避时长加随机抖动（jitter），避免惊群；**456（新浪 IP 级封禁）立即失败并降级，不重试**（重试无意义且加剧封禁）；403/503 走更长冷却（5–10s）再重试 |
+| 域名级熔断 | `CircuitBreaker` 对连续失败或 WAF/封禁响应（501、456）的域名进行冷却，避免反复请求已不可用的源；配置见 `config.dataSources.circuitBreaker` |
 | 多源故障转移        | 主源（新浪）失败或返回空时，降级到东财大包 / 备选源（见 4.3），不卡死单源                     |
 | 合理 Referer    | 部分接口（上交所/深交所融资融券）需带 `Referer` 才返回数据，按源配置                   |
 | 请求头贴近浏览器      | 带 `Accept`/`Accept-Language`/`Connection` 等常规头，降低被识别为脚本的概率 |
 
-> 以上手段基于 `axios` 实现（请求/超时/拦截器/重试开箱即用，飞书 SDK 亦依赖 axios，无额外负担）：随机 UA 池用内置常量数组 + `Math.random`，退避用自写 `setTimeout`，代理用 `https-proxy-agent`（可选）。反爬强度按“够用即可”，不做代理池 / 验证码破解等重度对抗。实测单次全量抓取（约 70 页串行）未触发 456。
+> 以上手段基于 `axios` + `lib/data/breakers.js` 的 `CircuitBreaker` 实现：`http.js` 负责随机 UA / 限速 / 请求头 / 退避重试；`CircuitBreaker` 负责域名级 WAF/封禁冷却（501 腾讯 WAF、456 新浪封禁立即熔断）。反爬强度按“够用即可”，不做代理池 / 验证码破解等重度对抗。实测单次全量抓取（约 70 页串行）未触发 456。
 
 ***
 
@@ -171,7 +176,7 @@
   - 跳过 9:30（开盘数据过少）、13:00（午休后累计成交额与 11:30 相同）两点信息冗余时点；
   - 各时间点写入 `config.intradayPoints` 可配置，如需更密可追加 13:00、15:00；
   - 非交易日、午休时段（11:30–13:00）自动跳过。
-- **收盘汇总**：每日 **19:00** 推送一次全天汇总。
+- **收盘汇总**：每日 **19:00** 推送一次全天汇总（由 `config.closeTime` 控制，格式 `HH:mm`）。
   - 选 19:00 而非 15:05：融资融券余额为盘后统计型数据，交易所约 18:00 才发布当日数据，东方财富 18:00–19:00 转发；15:05 拉取只能拿到 T-1 数据，与当日拥挤度/ETF 口径错位。19:00 留足缓冲，三个指标同日口径齐全。
 
 > A 股交易时间为 9:30–11:30、13:00–15:00。
@@ -216,37 +221,49 @@
 Node 常驻服务（service.js，开机自启 + 崩溃自动拉起）
            │
            ├── 内部定时器自管调度
-           │     ├── 交易时段内每小时（10:00 / 11:00 / 14:00）→ 盘中拥挤度 + 市场广度计算 + 推送
-           │     └── 19:00 → 收盘汇总（拥挤度 + 市场广度 + 融资融券 + ETF）计算 + 推送
+           │     ├── 交易时段内（10:00 / 11:00 / 14:00）→ 盘中快照
+           │     └── 19:00 → 收盘汇总
            │
            ▼
     ┌──────────────┐
-    │  计算主流程  │
+    │  FetcherManager（数据源策略模式）  │
+    └──────────────┘
+           │
+           ├── 全 A 行情（allA）：新浪分页 → 东财大包
+           ├── 指数 / ETF 行情（indexQuote/etfQuote）：新浪 → 东财
+           ├── 融资融券（margin）：东财 datacenter → 交易所官方
+           ├── 日 K（kline）：腾讯 → 新浪（MA20 精筛用）
+           └── 伦敦金现货（goldPrice）：新浪 hf_XAU
+           │
+           ▼
+    ┌──────────────┐
+    │   计算主流程  │  runIntraday / runClose（lib/runner.js）
+    └──────────────┘
+           │
+           ├── 成分股按市场 + 代码前缀派生（与全 A 同源）
+           ├── B 股成交额（计入两市总成交额）
+           ├── 市场广度（涨跌家数 / 涨跌停 / 总成交额）
+           ├── 大盘拥挤度（前 5% 集中度）
+           ├── 融资融券 + ETF 异动（仅收盘）
+           └── 技术筛选 + 黄金数据落盘（收盘附加步骤）
+           │
+           ▼
+    ┌──────────────┐
+    │   数据落地    │  history / priceHistory / goldHistory / watchlist
     └──────────────┘
            │
            ▼
-  抓取全 A 快照（fetchMarketSnapshot，新浪分页串行 → 东财大包兜底）
-    ├── 成分股按市场 + 代码前缀派生（与全 A 同源，拥挤度分子分母同源）
-    ├── B 股成交额（计入两市总成交额）
-    ├── 广度：涨跌家数 / 涨跌停 / 总成交额（同批数据计算）
-           │
-           ▼
-  并行拉指数行情（新浪优先）；19:00 额外并行拉：
-    ├── 融资融券余额（东财 datacenter 主源 + 交易所校验）
-    └── 宽基 ETF 成交额（白名单，新浪优先）
-           │
-           ▼
-    计算大盘拥挤度 / 市场广度
-           │
-           ▼
-    读取 / 更新历史数据（收盘记录写入，按年份分文件）
-           │
-           ▼
-    生成飞书消息卡片（盘中快照 / 收盘汇总 / 数据异常告警，column_set 多列布局）
-           │
-           ▼
-    调用飞书 SDK 推送（App Bot，卡片 + 图片）
+    ┌──────────────┐     ┌────────────────┐
+    │  飞书消息推送  │     │   Web 面板      │
+    └──────────────┘     └────────────────┘
+     盘中/收盘/告警卡片      Vite + Vue 3 SFC，默认 127.0.0.1:8787
 ```
+
+核心数据流：
+
+- **盘中快照**：FetcherManager 按 capability 路由拉取全 A → 派生成分股 + B 股 → 算广度 + 拥挤度 → 与内存上一快照对比 delta → 推送飞书卡片，同时落盘 `data/intraday.json`。
+- **收盘汇总**：核心行情抓取同盘中 → `Promise.allSettled` 并行融资融券 / ETF / 指数行情 → 核心收盘记录先落盘 → 附加步骤（收盘价快照、黄金数据、技术筛选）落盘 → 推送收盘卡片 → 周五自动 compact。
+- **Web 面板**：独立 `node:http` 服务，读取上述落盘数据做历史曲线、个股走势、筛选列表、黄金叠加图、配置管理、手动收盘触发。
 
 ***
 
@@ -255,40 +272,83 @@ Node 常驻服务（service.js，开机自启 + 崩溃自动拉起）
 ```
 stock-script/
 ├── docs/
-│   └── design.md              # 本文档
+│   ├── design.md              # 本文档
+│   └── CHANGELOG.md           # 变更记录
 ├── config.json                # 运行配置（飞书、指数、阈值、模式、快照点、存储）
 ├── config.sample.json         # 配置模板
-├── service.js                 # 常驻服务入口：定时调度 + 计算 + 推送
+├── service.js                 # 常驻服务入口：bootstrap + 数据源注册 + 调度 + Web 面板
+├── run.bat                    # Windows 一键启动（检查依赖/config + 打印访问地址 + npm start）
+├── scripts/
+│   └── start-info.js          # 启动前信息：读 config.web 端口 + 检测局域网 IPv4，输出访问 URL
 ├── lib/
-│   ├── config.js              # 配置加载与校验（fail-fast）
-│   ├── scheduler.js           # 定时调度（setTimeout 递归，交易日/时段判断）
-│   ├── runner.js              # 编排：runIntraday / runClose
-│   ├── emData.js              # 数据接口封装（新浪主源 + 东财兜底，fetchMarketSnapshot 统一抓取）
-│   ├── crowd.js               # 拥挤度计算逻辑（纯函数）
-│   ├── breadth.js             # 市场广度计算逻辑（纯函数：涨跌家数 / 涨跌停 / 总成交额 + 活跃度分级）
-│   ├── margin.js              # 融资融券余额拉取（东财主源 + 交易所备选校验）
-│   ├── etfFlow.js             # 宽基 ETF 成交额拉取 + 异常放大标签
-│   ├── calendar.js            # 交易日历判断（节假日 / 周末 / 交易时段）
-│   ├── history.js             # 本地 JSON 历史数据读写（按年分目录 / 缓存 / 备份 / 校验）
-│   ├── cardBuilder.js         # 飞书卡片 JSON 组装（column_set 表格 / 数据异常告警卡）
-│   ├── feishu.js              # 飞书推送封装（官方 SDK + App Bot + 消息卡片 + 图片）
-│   ├── http.js                # 共享反爬 HTTP 客户端（随机 UA / 限速 / 退避重试 / 456 快速失败）
-│   └── log.js                 # 双输出日志（stdout + 文件，10MB 轮转）
+│   ├── core/                  # 基础设施
+│   │   ├── config.js          # 配置加载与校验（fail-fast）
+│   │   ├── scheduler.js       # 定时调度（setTimeout 递归锚定 HH:MM，交易日/时段判断）
+│   │   ├── calendar.js        # 交易日历判断（节假日 / 周末 / 交易时段）
+│   │   ├── http.js            # 共享反爬 HTTP 客户端（随机 UA / 限速 / 退避重试 / 456 快速失败）
+│   │   └── log.js             # 双输出日志（文件全量 + 控制台按级别过滤，10MB 轮转）
+│   ├── data/                  # 数据源策略模式
+│   │   ├── base.js            # BaseFetcher 契约
+│   │   ├── manager.js         # FetcherManager：按 capability 路由 + 优先级 + failover
+│   │   ├── breakers.js        # CircuitBreaker：域名级 WAF/封禁冷却
+│   │   ├── allA.js            # 全 A 行情 fetcher（新浪分页 / 东财大包）
+│   │   ├── indexQuote.js      # 指数 / ETF 行情 fetcher（新浪 / 东财）
+│   │   ├── margin.js          # 融资融券 fetcher（东财 datacenter / 交易所官方）
+│   │   ├── kline.js           # 日 K fetcher（腾讯 / 新浪，MA20 精筛用）
+│   │   └── goldPrice.js       # 伦敦金现货 fetcher（新浪 hf_XAU）
+│   ├── algo/                  # 纯函数算法
+│   │   ├── crowd.js           # 拥挤度计算（前 5% 集中度 / level / delta）
+│   │   ├── breadth.js         # 市场广度（涨跌家数 / 涨跌停 / 总成交额 + 活跃度分级）
+│   │   └── screener.js        # 技术筛选（本地 MA5/MA10 粗筛 + 日 K MA20 二次精筛）
+│   ├── store/                 # JSON 文件存储
+│   │   ├── history.js         # 收盘 / 盘中历史读写（按年分文件 / 缓存 / 备份 / 自动整理）
+│   │   ├── priceHistory.js    # 收盘价快照积累 + 精筛结果落盘
+│   │   ├── goldHistory.js     # 金价 + 黄金股 / ETF 按日存储
+│   │   └── watchlist.js       # 关注列表服务端存储（跨设备同步）
+│   ├── view/                  # 输出层
+│   │   ├── cardBuilder.js     # 飞书卡片 JSON 组装（column_set 表格 / 数据异常告警卡）
+│   │   ├── feishu.js          # 飞书 SDK 推送封装（App Bot / 卡片 / 图片 / 失败回退 text）
+│   │   └── web.js             # Web 面板 API + 静态文件伺服（node:http，零依赖）
+│   ├── emData.js              # 东财字段/常量 + 解析纯函数 + 成分股派生 + B 股抓取
+│   ├── kline.js               # 日 K 解析纯函数 + createMa20Provider（带 TTL 缓存）
+│   ├── margin.js              # 融资融券格式化（含较前日变动）
+│   └── etfFlow.js             # 宽基 ETF 成交额异动 + 疑似国家队标签
 ├── tests/
-│   ├── breadth.test.js      # 市场广度算法单测（涨跌停判定 / 广度统计）
-│   ├── crowd.test.js        # 拥挤度算法单测（前 5% 集中度 / level / delta）
-│   ├── screener.test.js     # 技术筛选算法单测（MA / 连续上涨 / 筛选）
-│   ├── test-feishu.js       # 飞书凭证自检（npm run test:feishu）
-│   ├── probe.js             # 接口契约核实探针（npm run probe）
-│   └── run_close_once.js    # 手动跑一次完整收盘流程（抓取 → 推送 → 写入）
+│   ├── unit/                  # 单测（node --test）
+│   │   ├── breadth.test.js
+│   │   ├── crowd.test.js
+│   │   ├── screener.test.js
+│   │   ├── kline.test.js
+│   │   └── fetcher.test.js
+│   └── scripts/               # 手动 / 联网调试脚本
+│       ├── test-feishu.js     # 飞书凭证自检（npm run test:feishu）
+│       ├── probe.js           # 接口契约探针（npm run probe）
+│       ├── run_close_once.js  # 手动跑一次完整收盘流程
+│       └── trial_ma20.js      # 本地快照试跑 MA20 精筛
+├── web/
+│   ├── index.html             # Vite 入口
+│   ├── vite.config.mjs        # Vite 配置（dev 代理 /api 到 Node，目标从 config.json 读）
+│   ├── src/                   # Vue 3 SFC 工程
+│   │   ├── main.js           # createApp 入口
+│   │   ├── App.vue           # 外壳：Sidebar/Topbar/Tabbar + 共享状态
+│   │   ├── styles/tokens.css # 设计 token + 全局 reset + 布局 CSS
+│   │   ├── views/            # 五个 tab 视图组件
+│   │   ├── components/        # Sidebar/Topbar/Tabbar
+│   │   └── composables/      # useChart/useApi/useScreenerFilter/useWatchlist/useScreener
+│   ├── dist/                  # 构建产物（gitignore），生产由 Node 伺服
+│   └── vendor/                # 本地 ECharts 静态资源（阶段一）
 ├── data/
 │   ├── holidays.json          # 节假日数据
-│   ├── history/               # 按年份分目录的历史数据（如 2026.json）
-│   └── history_backup/        # 历史数据自动备份
+│   ├── history/               # 按年份分文件的历史数据（如 2026.json）
+│   ├── history_backup/        # 历史数据自动备份
+│   ├── price_history/         # 收盘价快照 + screener_result.json
+│   ├── gold_history/          # 金价与黄金股日快照
+│   ├── watchlist.json         # 关注列表
 ├── logs/
-│   ├── run.log                # 运行日志（stdout/stderr）
-│   └── error.log              # 错误日志
-├── CHANGELOG.md               # 变更记录
+│   ├── index.log              # 运行日志（文件侧 INFO 及以上）
+│   └── error.log              # 错误日志（ERROR 级别）
+├── CLAUDE.md                  # Claude Code 项目指引
+├── README.md
 └── package.json
 ```
 
@@ -298,13 +358,14 @@ stock-script/
 
 | 模块       | 选型                          | 说明                                       |
 | -------- | --------------------------- | ---------------------------------------- |
-| 运行环境     | Node.js 18+                 | LTS 版本，支持原生 `fetch`                      |
+| 运行环境     | Node.js 22+                 | LTS 版本，项目已切到 Node 22                      |
 | HTTP 请求  | `axios`                      | 请求/重试/超时/拦截器开箱即用，飞书 SDK 内部亦依赖 axios      |
 | 数据存储     | JSON 文件                      | 轻量，无需数据库                                 |
 | 定时调度     | 进程内部定时器                      | 常驻服务自管调度，不依赖外部 cron                      |
 | 飞书推送     | `@larksuiteoapi/node-sdk`    | 官方 SDK，App Bot 模式，token 自动管理，支持卡片/图片/附件   |
 | 反爬代理（可选） | `https-proxy-agent`          | 需走代理时用；默认不启用                             |
-| 图表（可选）   | `quickchart.io`（HTTP）或本地 canvas | 30 日拥挤度走势图；QuickChart 零依赖走 HTTP，canvas 需 npm |
+| 前端图表   | ECharts（本地 vendor）        | Web 面板用 Vite + Vue 3 SFC 工程，构建产物由 Node 伺服；ECharts 阶段一仍用本地 `web/vendor/echarts.min.js`，阶段二迁 npm import |
+| 前端构建   | Vite + Vue 3 SFC              | `npm run dev` 同时起 Vite(8089 起，被占自动递增)+Node；`npm run build` 构建 `web/dist/`；`prestart` 钩子自动构建（失败不阻断后端） |
 
 **原则**：按需引入 npm 依赖，控制依赖数量与质量（优先官方/高维护度包），不为"零依赖"牺牲功能可维护性。核心依赖仅 `axios` + `@larksuiteoapi/node-sdk`，均为官方/主流包；其余能力（定时、JSON 存储、HMAC）仍用 Node 内置模块。
 
@@ -318,13 +379,29 @@ stock-script/
   },
   "optionalDependencies": {
     "https-proxy-agent": "^7.0.0"
+  },
+  "devDependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "@playwright/mcp": "^0.0.79",
+    "@playwright/test": "^1.62.1",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "concurrently": "^8.2.2",
+    "element-plus": "^2.14.5",
+    "unplugin-auto-import": "^21.1.0",
+    "unplugin-vue-components": "^32.1.0",
+    "vite": "^5.0.0",
+    "vue": "^3.4.0"
   }
 }
 ```
 
 - `axios`：数据拉取（东财/新浪行情、融资融券、ETF）+ 反爬重试/超时；
 - `@larksuiteoapi/node-sdk`：飞书 App Bot 推送（卡片、图片、文件）；
-- `https-proxy-agent`（可选）：仅当部署环境需走代理访问飞书/数据源时装，默认不装。
+- `https-proxy-agent`（可选）：仅当部署环境需走代理访问飞书/数据源时装，默认不装；
+- `@playwright/test` / `@playwright/mcp`：浏览器自动化测试与 MCP 工具（开发依赖，运行时不需要）；
+- `vite` / `@vitejs/plugin-vue` / `vue`：Web 面板 SFC 工程构建（`npm run build` 产出 `web/dist/`；运行期 `prestart` 在 dist 缺失且 vite 可用时自动构建，vite 未装或构建失败只提示不阻断后端）；
+- `element-plus` / `@element-plus/icons-vue`：Web 面板 UI 组件库 + 图标组件，JS 组件经 `unplugin-vue-components` / `unplugin-auto-import` 按需自动导入，EP CSS 与图标为全量导入（开发依赖，运行时不需要）；
+- `concurrently`：开发时同时起 Vite + Node（`npm run dev`，开发依赖，运行时不需要）。
 
 ***
 
@@ -350,7 +427,7 @@ stock-script/
   },
   "mode": "both",
   "intradayPoints": ["10:00", "11:00", "14:00"],
-  "schedule": "0 19 * * *",
+  "closeTime": "19:00",
   "etfWhitelist": ["510300", "510050", "510500", "510310", "159915"],
   "etfSurgeRatio": 2.5,
   "marginUnit": "亿元",
@@ -365,6 +442,25 @@ stock-script/
     "backupDir": "data/history_backup",
     "autoCompact": true,
     "backupRetentionDays": 30
+  },
+  "web": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 8787
+  },
+  "screener": {
+    "ma20Source": "auto",
+    "ma20Days": 20,
+    "concurrency": 4,
+    "cacheTtlMs": 600000
+  },
+  "goldStocks": ["600547", "601899", "600489", "002155", "600988", "518880", "159934"],
+  "dataSources": {
+    "circuitBreaker": {
+      "enabled": true,
+      "failureThreshold": 3,
+      "cooldownMs": 300000
+    }
   }
 }
 ```
@@ -383,7 +479,9 @@ stock-script/
 | `feishu.domain`      | `feishu`（国内，默认）或 `lark`（国际版 Lark），对应 SDK `lark.Domain.Feishu` / `lark.Domain.Lark` |
 | `mode`               | 推送模式：`intraday`（仅盘中）/ `close`（仅收盘）/ `both`（两者，默认）                             |
 | `intradayPoints`     | 盘中快照时间点列表（HH:mm），默认 10:00、11:00、14:00                                         |
-| `schedule`           | 收盘汇总 Cron 表达式，默认每天 19:00（融资融券当日数据约 18:00 才发布）                                 |
+| `closeTime`          | 收盘汇总时间点（HH:mm），默认 19:00（融资融券当日数据约 18:00 才发布）                                 |
+| `logDir`             | 日志目录，默认 `logs`（相对项目根目录），可配绝对路径如 `/data/log`                                   |
+| `logConsoleLevel`    | 控制台日志级别：`DEBUG`/`INFO`/`WARN`/`ERROR`（默认 `ERROR`，控制台只显示错误）                     |
 | `etfWhitelist`       | 国家队代理监控的宽基 ETF 代码列表，默认 510300/510050/510500/510310/159915                     |
 | `etfSurgeRatio`      | 疑似国家队成交额放大倍数阈值（当日/前一日成交额，默认 2.5 倍）                                            |
 | `marginUnit`         | 融资融券金额展示单位，默认“亿元”                                                             |
@@ -397,6 +495,20 @@ stock-script/
 | `historyStorage.backupDir` | 历史数据自动备份目录（默认 `data/history_backup`）                                        |
 | `historyStorage.autoCompact` | 是否每周五收盘后自动整理历史数据（去重/校验/裁剪/清理空年份文件，默认 true）                |
 | `historyStorage.backupRetentionDays` | 备份文件保留天数（默认 30 天，每周五 compact 时清理过期备份）                              |
+| `web.enabled`        | 是否启用 Web 面板（默认 true）                                                          |
+| `web.host`           | Web 面板监听地址（默认 `127.0.0.1`）                                                    |
+| `web.port`           | Web 面板监听端口（默认 8787）                                                           |
+| `screener.ma20Source` | MA20 精筛数据源：`auto`（腾讯→新浪）/ `tencent` / `sina` / `off`（关闭精筛）               |
+| `screener.ma20Days`  | MA20 计算天数（默认 20）                                                                |
+| `screener.concurrency` | 精筛并发请求数（默认 4）                                                                |
+| `screener.cacheTtlMs` | 日 K 缓存有效期（默认 600000 ms）                                                       |
+| `screener.bjCutoff`  | MA20 精筛时是否启用北交所熔断（默认 true）：窗口内失败频率过高则跳过北交所日K，避免卡住 |
+| `screener.bjFailureThreshold` | 北交所日K失败多少次即触发跳过（默认 3）                                          |
+| `screener.bjWindowSize` | 北交所日K失败统计窗口大小（默认 10）                                                 |
+| `goldStocks`         | 黄金走势页面跟踪的黄金股 / ETF 代码列表                                                     |
+| `dataSources.circuitBreaker.enabled` | 是否启用数据源域名级熔断（默认 true）                                            |
+| `dataSources.circuitBreaker.failureThreshold` | 连续失败多少次触发熔断（默认 3）                                         |
+| `dataSources.circuitBreaker.cooldownMs` | 熔断后冷却时间（默认 300000 ms）                                         |
 
 ***
 
@@ -475,23 +587,43 @@ stock-script/
 
 ### 11.1 数据拉取
 
-统一入口 `fetchMarketSnapshot`（`lib/emData.js`），一次编排抓取全 A + 派生成分股 + B 股：
+数据抓取已重构为**策略模式**，统一由 `lib/data/manager.js` 的 `FetcherManager` 按 capability 路由，支持优先级排序、自动 failover、熔断和校验：
 
-- **全 A 抓取**：优先新浪 `Market_Center.getHQNodeData` 分页（`hs_a` 节点，约 70 页 / 5500+ 只），串行翻页并逐页回调 `onProgress` 打印进度；新浪失败或数据异常（< 3000 只 / 成交额过低）时降级东财 `clist/get` 大包（pz=6000，timeout 15s，重试 1 次）；
-- **成分股派生**：上证 = 全 A 中 `market === 0` 且代码 `60/688` 开头；创业板 = 代码 `30` 开头。与全 A 同源，保证拥挤度分子分母口径一致（见 §2.3）；
-- **B 股**：新浪 `sh_b`/`sz_b` 节点，成交额计入两市总成交额，失败不阻断主流程；
-- **指数 / ETF 行情**：新浪优先（`hq.sinajs.cn` 单请求，实测稳定），东财 `stock/get` 仅兜底（`maxRetries: 1`）；
-- 盘中拉取的是**当日累计成交额**（从开盘到当前时刻），收盘后为全天成交额，计算口径一致；
-- **反爬实现**（封装于 `lib/http.js` + `lib/emData.js`，基于 `axios`，详见 §4.5）：
-  - 每次请求构造随机 `User-Agent`（从内置 UA 池取，含 Chrome/Edge/Firefox 常见 UA）；
-  - 带常规浏览器请求头（`Accept`/`Accept-Language`/`Connection: keep-alive`）；
-  - 新浪请求自动带随机 `Referer` / `Cookie`；分页间 `sleep` 随机间隔（全 A 1.2–2.5s）；
-  - 分页全为串行，避免并发翻页绕过限速；
-  - 需 Referer 的接口（上交所/深交所融资融券）按源配置 `Referer` 头；
-- **重试与故障转移**：
-  - 单次请求失败（网络异常 / 非 200 / 返回空数据）按指数退避重试 `maxRetries` 次，退避时长 `1s/3s/8s` + 随机抖动（±300ms）；
-  - **456（新浪 IP 级封禁）立即失败并降级**，不重试（避免加剧封禁）；403/503 走更长冷却重试；
-  - 所有源均失败时，推送“数据异常”告警卡（`buildErrorCard`）并记录错误日志，当日该指标标记为缺失，不推送全 0 假数据。
+- **BaseFetcher 契约**（`lib/data/base.js`）：每个 fetcher 声明 `name`、`priority`、`capability`（如 `allA`、`indexQuote`、`etfQuote`、`margin`、`kline`、`goldPrice`）、`marketSupport` 和 `fetch` 方法。
+- **FetcherManager**：执行时按 capability 过滤可用 fetcher，按优先级排序，依次尝试；单源失败或校验不通过时自动降级下一源；所有源失败则返回错误，由上层推"数据异常"告警卡。
+- **CircuitBreaker**（`lib/data/breakers.js`）：域名级熔断。连续失败 `failureThreshold` 次或遇到 501（腾讯 WAF）/ 456（新浪封禁）时立即熔断，冷却 `cooldownMs`（默认 5 分钟）后再恢复。
+
+注册在 `service.js` 的 fetcher 优先级：
+
+| 能力 | 主源 | 兜底 |
+| --- | --- | --- |
+| `allA` | 新浪 `Market_Center.getHQNodeData` 分页（约 70 页 / 5500+ 只） | 东财 `clist/get` 大包 |
+| `indexQuote` | 新浪 `hq.sinajs.cn` | 东财 `stock/get` |
+| `etfQuote` | 新浪 `hq.sinajs.cn` | 东财 `stock/get` |
+| `margin` | 东财 `datacenter-web.eastmoney.com` | 上交所 + 深交所官方接口 |
+| `kline` | 腾讯日 K | 新浪日 K |
+| `goldPrice` | 新浪 `hf_XAU` | — |
+
+统一抓取逻辑：
+
+- **全 A 抓取**：串行翻页，逐页回调 `onProgress` 打印进度；校验要求返回 ≥3000 只；新浪失败或数据异常时降级东财大包。
+- **成分股派生**：上证 = 全 A 中 `market === 0` 且代码 `60/688` 开头；创业板 = 代码 `30` 开头。与全 A 同源，保证拥挤度分子分母口径一致（见 §2.3）。
+- **B 股**：新浪 `sh_b`/`sz_b` 节点，成交额计入两市总成交额，失败不阻断主流程。
+- **盘中拉取的是当日累计成交额**（从开盘到当前时刻），收盘后为全天成交额，计算口径一致。
+
+**反爬实现**（封装于 `lib/core/http.js`，基于 `axios`，详见 §4.5）：
+
+- 每次请求构造随机 `User-Agent`（从内置 UA 池取，含 Chrome/Edge/Firefox 常见 UA）；
+- 带常规浏览器请求头（`Accept`/`Accept-Language`/`Connection: keep-alive`）；
+- 新浪请求自动带随机 `Referer` / `Cookie`；分页间 `sleep` 随机间隔（全 A 1.2–2.5s）；
+- 分页全为串行，避免并发翻页绕过限速；
+- 需 Referer 的接口（上交所/深交所融资融券）按源配置 `Referer` 头。
+
+**重试与故障转移**：
+
+- 单次请求失败（网络异常 / 非 200 / 返回空数据）按指数退避重试 `maxRetries` 次，退避时长 `1s/3s/8s` + 随机抖动（±300ms）；
+- **456（新浪 IP 级封禁）立即失败并降级**，不重试（避免加剧封禁）；403/503 走更长冷却重试；
+- 所有源均失败时，推送“数据异常”告警卡（`buildErrorCard`）并记录错误日志，当日该指标标记为缺失，不推送全 0 假数据。
 
 ### 11.2 拥挤度计算
 
@@ -512,16 +644,25 @@ stock-script/
 
 > 涨跌家数与涨跌停家数可复用拥挤度计算时已拉取的成分股行情数据（同一批个股涨跌幅），避免重复请求；两市总成交额为行情接口的汇总字段，单次请求即可获得。
 
+#### 11.2.2 技术筛选
+
+技术筛选用于收盘汇总和 Web 面板「筛选」页，采用**两级过滤**策略：
+
+1. **本地粗筛**（`lib/algo/screener.js`）：基于近 10 日收盘价快照，筛选出「连续 3 日上涨 且 现价 ≥ MA5 > MA10」的个股。需要至少积累满 10 个交易日才具备计算条件。
+2. **MA20 二次精筛**：对粗筛结果并发拉取日 K 数据（默认腾讯主源、新浪兜底，可配置 `screener.ma20Source`），计算 MA20，仅保留「现价 ≥ MA20 且 MA5 > MA10 > MA20」的个股。无法取得 MA20 的股票计入 `ma20Missing`，不强行按 0 处理。
+3. **北交所熔断**：部分免费数据源对北交所（4/8/92 开头）支持不稳定，为避免精筛长时间卡住，当最近 `screener.bjWindowSize` 次北交所请求中失败达到 `screener.bjFailureThreshold` 次时，后续北交所股票直接跳过，计入 `ma20Missing`。可通过 `screener.bjCutoff` 关闭。
+
+精筛结果落盘到 `data/price_history/screener_result.json`，Web 面板 `/api/screener` 优先直读该文件，避免每次访问都重算日 K；当缓存与请求的 `upDays` 不符或无缓存时，才回退到实时计算。
+
 ### 11.3 历史数据
 
-- **仅收盘记录落盘**：每天 19:00 收盘汇总成功后将结果写入本地 JSON 文件；盘中快照**不写入历史文件**，只在进程内存中缓存当日已推快照值，用于计算下一快照的变化（↑/↓）；
-- 存储路径按年份分目录，如 `data/history/2026.json`，避免单文件过大，便于长期保存与备份；
-- 数据文件为数组，每条记录含 `date`、`type: "close"` 及各指数拥挤度，按日期顺序排列；
-- `close` 记录额外含融资融券余额（融资/融券/合计）与宽基 ETF 成交额异动数据；
-- 同一 `date` 重复运行会覆盖当天数据，避免重复记录；
-- 推送收盘汇总时取最近 `historyDays` 条 `close` 记录；
-- 盘中快照变化值（↑/↓）取自进程内存中当日上一快照；进程重启则当日变化值从零开始（可接受，不影响收盘数据）；
-- **可靠性**：进程内缓存减少重复磁盘读取；写入前进行数据校验，无效记录拒绝落盘；使用简单写锁避免并发写冲突；每次写入前先备份旧文件，再写 `.tmp` 最后 `rename`，保证原子性；
+- **收盘记录落盘**：每天 19:00 收盘汇总成功后将结果写入 `data/history/YYYY.json`；同一 `date` 重复运行会覆盖当天数据，避免重复记录；推送收盘汇总时取最近 `historyDays` 条 `close` 记录。
+- **盘中快照落盘**：盘中快照也写入 `data/intraday.json`，用于 Web 面板「当日盘中轨迹」回看；变化值（↑/↓）优先取自进程内存中当日上一快照，内存丢失时从盘中落盘读取。
+- **收盘价快照**：收盘后把全 A 收盘价按日写入 `data/price_history/YYYY-MM-DD.json`，保留约 370 天，作为技术筛选数据源。
+- **技术筛选结果落盘**：精筛结果写入 `data/price_history/screener_result.json`，Web 面板 `/api/screener` 优先直读，避免每次访问重算日 K。
+- **黄金数据落盘**：金价 + 黄金股/ETF 收盘价按日写入 `data/gold_history/YYYY-MM-DD.json`。
+- **关注列表**：服务端 `data/watchlist.json` 存储，Web 面板读写，跨设备同步。
+- **可靠性**：进程内缓存减少重复磁盘读取；写入前进行数据校验，无效记录拒绝落盘；使用简单写锁避免并发写冲突；每次写入前先备份旧文件，再写 `.tmp` 最后 `rename`，保证原子性。
 - **自动整理**：每周五收盘后自动执行 `compactHistory`，对全量记录去重、校验、裁剪 `historyDays`、清理空年份文件，保持存储整洁。
 
 ### 11.4 飞书推送
@@ -619,7 +760,7 @@ const imageKey = uploadRes.data.image_key;
 ```
 
 - 也可用 `client.im.file.create` 上传文件得 `file_key`，以 `msg_type: 'file'` 单独发文件（如 PDF 报告）；
-- 走势图生成：用 QuickChart（`https://quickchart.io/chart?c={...}` HTTP 拿 PNG，零依赖）下载后上传，或本地 canvas 库生成 PNG 后上传。
+- 走势图生成：Web 面板已用 ECharts 绘制，如需推送到飞书，可先用 canvas 库（如 `node-canvas`）生成 PNG 后上传，或调用外部图表服务生成。
 
 **响应处理**：
 
@@ -638,7 +779,7 @@ const imageKey = uploadRes.data.image_key;
 ### 11.5 常驻服务与调度
 
 - 脚本以常驻进程运行（入口 `service.js`），内部用定时器自管调度，不依赖外部 cron；
-- 盘中快照点（`intradayPoints`）与收盘汇总（`schedule`，默认 19:00）均由进程内部定时器触发；
+- 盘中快照点（`intradayPoints`）与收盘汇总（`closeTime`，默认 19:00）均由进程内部定时器触发；
 - 进程内 `process.on('uncaughtException')` / `unhandledRejection` 兜底，避免单次异常导致进程退出；
 - 非交易日、午休时段由进程内部判断后跳过本次调度。
 
@@ -658,6 +799,37 @@ const imageKey = uploadRes.data.image_key;
 - 放大倍数 ≥ `etfSurgeRatio`（默认 2.5 倍）者，打“疑似国家队”标签；
 - 汇金官网公告时间点做事件标注（公告仅定性，无金额，需人工或抓取）；
 - 拉取失败重试 `maxRetries` 次，均失败则该 ETF 标记为数据缺失，不阻断整体推送。
+
+### 11.8 Web 面板
+
+Web 面板是 Vite + Vue 3 SFC 工程（`web/src/`），构建产物 `web/dist/` 由 `lib/view/web.js` 通过 `node:http` 伺服，默认监听 `127.0.0.1:8787`。UI 组件库用 Element Plus + @element-plus/icons-vue，配合 `unplugin-vue-components` / `unplugin-auto-import` 按 `ElementPlusResolver` 自动按需导入（SFC 里写 `<el-button>` 等无需手动 import），`main.js` 全量导入 EP CSS + 全局注册所有图标组件；外壳菜单/按钮/输入/选择/标签/卡片/表单/消息框均用 el-* 组件，emoji 图标换成 `<el-icon>` 图标组件，`tokens.css` 只保留布局/主题 token/图表高度/设备媒体查询，被 EP 替代的组件 CSS 已删除。按 tab 拆分为独立视图组件与 composables：`App.vue` 持有外壳（Sidebar/Topbar/Tabbar）与共享状态（tab/status/hist/screen），五个视图组件（`views/OverviewView.vue` 等）各自负责数据加载与图表渲染，公共逻辑抽到 `composables/`（`useChart` ECharts 生命周期、`useApi` fetch 封装、`useScreenerFilter` 三维筛选+虚拟滚动、`useWatchlist` 关注列表、`useScreener` 筛选数据加载）。ECharts 阶段一仍用本地 `web/vendor/echarts.min.js` 全局加载（阶段二迁 npm import）。布局按设备类型自适应：真桌面（`hover:hover` + `pointer:fine`，有鼠标+精确指针）显示左侧固定侧栏 + 顶栏 + 内容区三栏；触屏设备（iPhone/iPad/Android，`hover:none` 或 `pointer:coarse`）隐藏侧栏改底部 tabbar，任何宽度都走触屏布局（避免 iPad 横屏 1366px 误判为桌面）。五个 tab：
+
+- **概览**：指标卡 + 上证/创业板拥挤度历史曲线（30/60/120 日）+ 当日盘中轨迹（桌面端双列并排，触屏堆叠）。
+- **筛选**：技术筛选命中列表，支持板块 / 价格区间 / 已关注三维前端筛选（板块/价格用 `el-radio-group`，关注用 `el-checkbox`）；列表采用手写虚拟滚动（itemHeight 72，row 纵向堆叠布局，`useScreenerFilter.js` 逻辑保留），只渲染可视区行，行内 ★关注按钮/板块标签换 `el-button`/`el-tag`；关注列表存服务端 `data/watchlist.json`，跨设备同步。
+- **个股**：输入 6 位代码查询收盘价 + MA5/MA10 走势图，最近查询记录存 localStorage。
+- **黄金**：伦敦金现货（美元/盎司）叠加黄金股/ETF 收盘价的双 Y 轴走势图（30/60/120 日）。
+- **配置**：在线编辑 `config.json` 全量字段，表单按 `el-collapse` 分 6 组（基础/飞书/筛选/熔断/Web/历史），输入用 `el-input`/`el-select`/`el-input-number`/`el-checkbox`（`appSecret` 脱敏显示为 `***`，不改保存时后端自动还原原值）；校验失败时后端返回 errors 数组，前端用 `el-alert` 渲染为多行列表逐条展示；保存后提示需重启服务生效；支持手动触发完整收盘流程（`ElMessageBox.confirm` 二次确认、防重入、非交易日拒绝）。
+
+后端 API：
+
+- `GET /api/indices/history?days=60`：指数拥挤度历史。
+- `GET /api/intraday?date=today`：当日盘中快照轨迹。
+- `GET /api/stock/{code}?days=60`：个股收盘价 + MA5/MA10。
+- `GET /api/screener?upDays=3`：技术筛选结果，优先读落盘缓存。
+- `GET /api/gold/history?days=60`：黄金走势数据。
+- `GET|POST /api/watchlist`：关注列表读写。
+- `GET|POST /api/config`：配置读写（GET 脱敏 appSecret）。
+- `POST /api/run-close`：手动触发收盘汇总，异步执行，立即返回 202。
+
+开发与构建工作流：
+
+- **开发**：`npm run dev` 用 `concurrently` 同时起 Vite（8089 起，被占时自动递增，HMR）+ Node（API），Vite 代理 `/api` 与 `/vendor` 到 Node（代理目标从 `config.json` 的 `web.host`/`web.port` 读，不写死），前端访问启动日志里打印的 `Local:` 地址。
+- **构建**：`npm run build` 用 Vite 构建 `web/src/` → `web/dist/`（hash 资源在 `dist/assets/`）。
+- **生产**：`npm start` 单进程伺服 API + 构建产物；`prestart` 钩子（`scripts/prestart-build.js`）在 `web/dist/index.html` 不存在且 vite 可用时自动触发构建，vite 未安装或构建失败时只打印提示、**不阻断后端启动**（面板回落 503 提示页），保证常驻监控的稳定性优先。`serveStatic` 伺服 `web/dist`，新增 `.mjs`/`.woff2` 等 MIME、SPA fallback（无扩展名路径回退 index.html）、dist 缺失时返回 503 提示页。`web/dist/` 与 `web/.vite/` 已 gitignore。
+
+### 11.9 黄金走势
+
+收盘附加步骤会抓取伦敦金现货（新浪 `hf_XAU`），并解析 `config.goldStocks` 中的黄金股与 ETF：A 股代码从当日全 A 收盘价快照中读取，ETF 代码通过 ETF 行情接口单独补抓，最终写入 `data/gold_history/YYYY-MM-DD.json`。Web 面板「黄金」tab 读取这些数据，绘制金价与黄金股/ETF 收盘价的双 Y 轴叠加走势图，支持 30/60/120 日回看。
 
 ***
 
@@ -681,7 +853,20 @@ const imageKey = uploadRes.data.image_key;
 node service.js
 ```
 
-后台常驻运行需配合下文开机自启方案，并将 stdout/stderr 重定向到 `logs/run.log`。
+后台常驻运行需配合下文开机自启方案，并将 stdout/stderr 重定向到 `logs/index.log`（或 `logDir` 指定路径）。
+
+### 12.2.1 一键启动（run.bat）
+
+Windows 下双击仓库根目录的 `run.bat` 即可一键启动，免去手动敲命令。脚本流程：
+
+1. 检测 `node_modules` 缺失时自动 `npm install`；
+2. 校验 `config.json` 存在（缺失则提示从 `config.sample.json` 复制并退出）；
+3. 调用 `scripts/start-info.js` 在控制台打印访问地址；
+4. 执行 `npm start`（触发 `prestart` 钩子，`web/dist` 不存在时自动构建前端，再 `node service.js`）。
+
+`scripts/start-info.js` 直接 `JSON.parse` 读 `config.json` 的 `web.host`/`web.port`（不走 `loadConfig`，避免飞书凭证未填时 fail-fast），用 `os.networkInterfaces()` 取本机非回环 IPv4，输出本机与局域网访问地址。当 `web.host=127.0.0.1` 时额外提示：局域网访问需将 `web.host` 改为 `0.0.0.0` 后重启（开放公网有安全风险）。
+
+> `run.bat` 本身只含 ASCII 注释与命令，中文提示统一由 `start-info.js` 输出，避免 bat 在 `chcp 65001` 下的中文编码问题。
 
 ### 12.3 开机自启方案（二选一）
 
@@ -706,8 +891,8 @@ node service.js
 ```powershell
 nssm install AStockCrowdMonitor "C:\Program Files\nodejs\node.exe" "service.js"
 nssm set AStockCrowdMonitor AppDirectory "d:\front\test\stock-script"
-nssm set AStockCrowdMonitor AppStdout "d:\front\test\stock-script\logs\run.log"
-nssm set AStockCrowdMonitor AppStderr "d:\front\test\stock-script\logs\run.log"
+nssm set AStockCrowdMonitor AppStdout "d:\front\test\stock-script\logs\index.log"
+nssm set AStockCrowdMonitor AppStderr "d:\front\test\stock-script\logs\index.log"
 nssm set AStockCrowdMonitor AppRotateFiles 1
 nssm set AStockCrowdMonitor AppRotateBytes 10485760
 nssm start AStockCrowdMonitor
@@ -720,7 +905,7 @@ nssm start AStockCrowdMonitor
 
 ### 12.4 验证服务
 
-1. 启动后观察 `logs/run.log`，确认进程常驻、无立即退出；
+1. 启动后观察 `logs/index.log`（或 `logDir` 指定目录），确认进程常驻、无立即退出；
 2. 手动触发一次计算（可临时把某快照点改为当前时间，或运行单次计算入口）确认消息已推送到飞书；
 3. 等待下一个快照点，确认盘中快照自动触发并推送；
 4. 进程异常时确认外层（nssm / 任务计划）或进程内兜底已生效。
@@ -763,11 +948,12 @@ nssm start AStockCrowdMonitor
 ### 13.2 后续扩展
 
 - 增加沪深 300、中证 500、科创 50 等宽基指数；
-- 增加阈值触发推送（如突破 50% 时单独告警）；
+- 增加阈值触发推送（如拥挤度突破 50% 时单独告警）；
 - 接入数据库或对象存储，持久化历史数据；
-- 增加 Web 可视化面板；
-- 收盘汇总内嵌 30 日拥挤度走势图（QuickChart 生图 → 上传得 image_key → 卡片 `img` 元素，App Bot 已支持）；
-- 支持企业微信、钉钉等其他推送渠道（多渠道并行）。
+- 收盘汇总内嵌 30 日拥挤度走势图（App Bot 已支持图片上传，可先生成 PNG 再嵌入卡片）；
+- 支持企业微信、钉钉等其他推送渠道（多渠道并行）；
+- 技术筛选增加更多均线/量价因子；
+- 节假日表改为自动更新或接入交易所日历接口。
 
 ***
 
@@ -787,10 +973,14 @@ nssm start AStockCrowdMonitor
 - [x] 收盘汇总时间调整为 19:00（融资融券当日数据约 18:00 才发布）已确认
 - [x] 飞书推送实现方案（官方 SDK + App Bot + 消息卡片 + column\_set 多列布局表格 + 图片上传）已确认
 - [x] 反爬策略（随机 UA + 请求间隔 + 指数退避 + 多源故障转移 + 456 快速失败，基于 axios）已确认
-- [x] 依赖策略（按需引入 npm 依赖：axios + @larksuiteoapi/node-sdk，控制数量与质量）已确认
+- [x] 数据源策略模式（FetcherManager + BaseFetcher + CircuitBreaker）已确认
+- [x] 技术筛选两级过滤（本地 MA5/MA10 粗筛 + 日 K MA20 精筛）已确认
+- [x] Web 面板（Vite + Vue 3 SFC，概览/筛选/个股/黄金/配置五 tab）已确认
+- [x] Web 面板 UI 组件库用 Element Plus + @element-plus/icons-vue（unplugin 组件按需自动导入，CSS/图标全量）已确认
+- [x] 黄金走势（伦敦金现货 + 黄金股/ETF 双 Y 轴叠加）已确认
+- [x] 关注列表服务端存储与跨设备同步已确认
+- [x] Web 配置在线编辑与手动触发收盘汇总已确认
 
-***
-
-*文档版本：v1.10*\
+*文档版本：v1.11*\
 *编写日期：2026-07-18*\
-*修订日期：2026-08-08（v1.10 数据抓取重构：fetchMarketSnapshot 统一抓取，全 A 与成分股同源派生；分页串行 + 456 封禁快速失败；指数/ETF 行情新浪优先；抓取进度打印；数据失败推送告警卡；深交所融资融券解析修正；测试脚本迁至 tests/；全链路实测通过）*
+*修订日期：2026-08-30（v1.11 同步代码现状：更新目录结构、配置项、数据源策略模式、Web 面板、技术筛选 MA20 精筛、黄金走势；同步修正黄金 ETF 行情获取方式；v1.10 数据抓取重构详见 CHANGELOG）*

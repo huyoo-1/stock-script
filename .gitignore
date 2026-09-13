@@ -4,12 +4,12 @@ config.json
 # 依赖
 node_modules/
 
+# Web 构建产物（npm run build 生成，不入库）
+web/dist/
+web/.vite/
+
 # 运行时数据与日志
-data/history.json
-data/intraday.json
-data/history/
-data/history_backup
-data/price_history/
+data/
 logs/
 *.log
 *.log.1
@@ -20,3 +20,5 @@ Thumbs.db
 config.json
 .idea/
 .vscode/
+.playwright-mcp
+.mcp.json
